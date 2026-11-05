@@ -24,9 +24,17 @@ const BOOKING_HEADERS = [
   'unitPrice',
   'totalPrice',
   'customerName',
+  'documentType',
   'customerDocument',
+  'riderAge',
+  'guardianName',
+  'emergencyPhone',
   'customerPhone',
   'customerEmail',
+  'eps',
+  'bloodType',
+  'address',
+  'ownBike',
   'experienceLevel',
   'riderNotes',
   'paymentMethod',
@@ -130,7 +138,7 @@ function doGet(e) {
       var item = allForLookup[i];
       var itemCode = String(item.code || '').trim().toUpperCase();
       var itemDoc = String(item.customerDocument || '').replace(/\D/g, '');
-      if (itemCode === lookupCode && itemDoc === lookupDoc) {
+      if (itemCode === lookupCode && Boolean(lookupDoc) && itemDoc === lookupDoc) {
         found = {
           id: item.id,
           code: item.code,
@@ -144,8 +152,17 @@ function doGet(e) {
           unitPrice: Number(item.unitPrice) || 0,
           totalPrice: Number(item.totalPrice) || 0,
           customerName: item.customerName,
+          documentType: item.documentType || 'C.C.',
           customerDocument: item.customerDocument,
+          riderAge: item.riderAge || '',
+          guardianName: item.guardianName || '',
+          emergencyPhone: item.emergencyPhone || '',
           customerPhone: item.customerPhone,
+          customerEmail: item.customerEmail,
+          eps: item.eps || '',
+          bloodType: item.bloodType || 'O+',
+          address: item.address || '',
+          ownBike: item.ownBike || '',
           status: item.status || 'pendiente',
           createdAt: item.createdAt,
           updatedAt: item.updatedAt,
@@ -323,10 +340,17 @@ function rescheduleBooking_(ss, body) {
     var newDate = parseSheetDate_(body.date);
     var newTime = parseSheetTime_(body.timeSlot, ss);
 
+    if (!targetCode || !targetDoc) {
+      return {
+        success: false,
+        error: 'Debes proporcionar tanto el código de reserva como el número de documento.',
+      };
+    }
+
     var idx = rows.findIndex(function (r) {
       var sameCode = String(r.code || '').trim().toUpperCase() === targetCode;
       var sameDoc = String(r.customerDocument || '').replace(/\D/g, '') === targetDoc;
-      return sameCode && (!targetDoc || sameDoc);
+      return sameCode && sameDoc;
     });
 
     if (idx === -1) {

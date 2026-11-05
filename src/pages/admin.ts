@@ -557,8 +557,30 @@ function renderBookingsTab(
 
                         <td class="py-4 px-4 align-top">
                           <span class="font-subtitle font-semibold text-white block">${escapeHtml(b.customerName)}</span>
-                          <span class="text-xs text-white/70 block">ID: ${escapeHtml(b.customerDocument)}</span>
+                          <span class="text-xs text-lime-electric block font-mono">
+                            ${escapeHtml(b.documentType || 'C.C.')} ${escapeHtml(b.customerDocument)}
+                            ${b.riderAge ? `• ${escapeHtml(String(b.riderAge))} años` : ''}
+                          </span>
+                          ${
+                            b.guardianName
+                              ? `<span class="text-[11px] text-amber-300 block">Tutor/Acudiente: ${escapeHtml(b.guardianName)}</span>`
+                              : ''
+                          }
                           <span class="text-xs text-white/70 block">${escapeHtml(b.customerEmail)}</span>
+
+                          <div class="mt-1 flex flex-wrap items-center gap-1 text-[11px]">
+                            ${b.eps ? `<span class="rounded bg-white/10 px-1.5 py-0.5 text-white/80">EPS: ${escapeHtml(b.eps)}</span>` : ''}
+                            ${b.bloodType ? `<span class="rounded bg-white/10 px-1.5 py-0.5 text-white/80">RH: ${escapeHtml(b.bloodType)}</span>` : ''}
+                            ${b.emergencyPhone ? `<span class="rounded bg-red-500/25 border border-red-500/40 text-red-200 px-1.5 py-0.5">SOS: ${escapeHtml(b.emergencyPhone)}</span>` : ''}
+                            ${b.ownBike ? `<span class="rounded bg-lime-electric/20 text-lime-electric px-1.5 py-0.5">Moto: ${escapeHtml(b.ownBike)}</span>` : ''}
+                          </div>
+
+                          ${
+                            b.address
+                              ? `<span class="text-[10px] text-white/50 block mt-1">Dir: ${escapeHtml(b.address)}</span>`
+                              : ''
+                          }
+
                           <div class="mt-1.5 flex items-center gap-2">
                             <a
                               href="https://wa.me/57${wppPhone}?text=${wppMsg}"
@@ -754,30 +776,112 @@ function bindBookingsTabEvents(
       if (!booking) return;
 
       const { value: formValues } = await Swal.fire({
-        title: `Editar Reserva ${booking.code}`,
+        title: `Reserva ${booking.code} — Ficha de Contrato y Edición`,
+        width: '750px',
         html: `
-          <div class="text-left space-y-3 text-sm">
-            <div>
-              <label class="block text-xs uppercase text-gray-400 mb-1">Fecha (YYYY-MM-DD)</label>
-              <input id="swal-edit-date" type="date" value="${escapeHtml(booking.date)}" class="x-input" />
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-xs uppercase text-gray-400 mb-1">Hora (Ej. 09:00)</label>
-                <input id="swal-edit-time" type="text" value="${escapeHtml(booking.timeSlot)}" class="x-input" />
+          <div class="text-left space-y-4 text-xs max-h-[75vh] overflow-y-auto px-1">
+            <!-- Bloque 1: Ficha del Piloto (Contrato Oficial) -->
+            <div class="rounded-xl border border-lime-electric/30 bg-graphite/40 p-3.5 space-y-3">
+              <span class="font-subtitle text-xs font-semibold text-lime-electric uppercase block">
+                📋 Datos del Piloto (Carta de Compromiso)
+              </span>
+
+              <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                <div class="sm:col-span-8">
+                  <label class="block text-[11px] text-gray-400 mb-1">Nombre Completo del Piloto</label>
+                  <input id="swal-edit-name" type="text" value="${escapeHtml(booking.customerName)}" class="x-input text-xs" />
+                </div>
+                <div class="sm:col-span-4">
+                  <label class="block text-[11px] text-gray-400 mb-1">Edad</label>
+                  <input id="swal-edit-age" type="number" value="${escapeHtml(String(booking.riderAge ?? ''))}" class="x-input text-xs" />
+                </div>
               </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                <div class="sm:col-span-4">
+                  <label class="block text-[11px] text-gray-400 mb-1">Tipo Documento</label>
+                  <input id="swal-edit-doctype" type="text" value="${escapeHtml(booking.documentType || 'C.C.')}" class="x-input text-xs" />
+                </div>
+                <div class="sm:col-span-8">
+                  <label class="block text-[11px] text-gray-400 mb-1">Número Documento</label>
+                  <input id="swal-edit-doc" type="text" value="${escapeHtml(booking.customerDocument)}" class="x-input text-xs" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                <div class="sm:col-span-6">
+                  <label class="block text-[11px] text-gray-400 mb-1">Tutor / Acudiente (si menor)</label>
+                  <input id="swal-edit-guardian" type="text" value="${escapeHtml(booking.guardianName || '')}" class="x-input text-xs" />
+                </div>
+                <div class="sm:col-span-6">
+                  <label class="block text-[11px] text-red-300 mb-1">Tel. Emergencia (SOS)</label>
+                  <input id="swal-edit-sos" type="tel" value="${escapeHtml(booking.emergencyPhone || '')}" class="x-input text-xs" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                <div class="sm:col-span-6">
+                  <label class="block text-[11px] text-gray-400 mb-1">Celular / WhatsApp</label>
+                  <input id="swal-edit-phone" type="tel" value="${escapeHtml(booking.customerPhone)}" class="x-input text-xs" />
+                </div>
+                <div class="sm:col-span-6">
+                  <label class="block text-[11px] text-gray-400 mb-1">Correo Electrónico</label>
+                  <input id="swal-edit-email" type="email" value="${escapeHtml(booking.customerEmail)}" class="x-input text-xs" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                <div class="sm:col-span-6">
+                  <label class="block text-[11px] text-gray-400 mb-1">EPS</label>
+                  <input id="swal-edit-eps" type="text" value="${escapeHtml(booking.eps || '')}" class="x-input text-xs" />
+                </div>
+                <div class="sm:col-span-3">
+                  <label class="block text-[11px] text-gray-400 mb-1">RH / Sangre</label>
+                  <input id="swal-edit-blood" type="text" value="${escapeHtml(booking.bloodType || 'O+')}" class="x-input text-xs" />
+                </div>
+                <div class="sm:col-span-3">
+                  <label class="block text-[11px] text-gray-400 mb-1">Moto Propia</label>
+                  <input id="swal-edit-bike" type="text" value="${escapeHtml(booking.ownBike || '')}" class="x-input text-xs" />
+                </div>
+              </div>
+
               <div>
-                <label class="block text-xs uppercase text-gray-400 mb-1">Cupos / Motos</label>
-                <input id="swal-edit-qty" type="number" min="1" max="50" value="${booking.quantity}" class="x-input" />
+                <label class="block text-[11px] text-gray-400 mb-1">Dirección / Residencia</label>
+                <input id="swal-edit-address" type="text" value="${escapeHtml(booking.address || '')}" class="x-input text-xs" />
               </div>
             </div>
-            <div>
-              <label class="block text-xs uppercase text-gray-400 mb-1">Total Pagado (COP)</label>
-              <input id="swal-edit-total" type="number" min="0" step="1000" value="${booking.totalPrice}" class="x-input" />
-            </div>
-            <div>
-              <label class="block text-xs uppercase text-gray-400 mb-1">Notas de Administración</label>
-              <input id="swal-edit-notes" type="text" value="${escapeHtml(booking.adminNotes || '')}" class="x-input" placeholder="Ej. Pago verificado en Nequi" />
+
+            <!-- Bloque 2: Programación de Turno y Cupos -->
+            <div class="rounded-xl border border-white/10 bg-graphite/40 p-3.5 space-y-3">
+              <span class="font-subtitle text-xs font-semibold text-white uppercase block">
+                🗓️ Fecha, Horario y Valor
+              </span>
+
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label class="block text-[11px] text-gray-400 mb-1">Fecha</label>
+                  <input id="swal-edit-date" type="date" value="${escapeHtml(booking.date)}" class="x-input text-xs" />
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-400 mb-1">Hora (24h - ej. 09:30)</label>
+                  <input id="swal-edit-time" type="text" value="${escapeHtml(booking.timeSlot)}" class="x-input text-xs" />
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-400 mb-1">Cupos / Motos</label>
+                  <input id="swal-edit-qty" type="number" min="1" max="50" value="${booking.quantity}" class="x-input text-xs" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label class="block text-[11px] text-gray-400 mb-1">Total Pagado (COP)</label>
+                  <input id="swal-edit-total" type="number" min="0" step="1000" value="${booking.totalPrice}" class="x-input text-xs" />
+                </div>
+                <div>
+                  <label class="block text-[11px] text-gray-400 mb-1">Notas de Administración</label>
+                  <input id="swal-edit-notes" type="text" value="${escapeHtml(booking.adminNotes || '')}" class="x-input text-xs" placeholder="Ej. Pago verificado en Nequi" />
+                </div>
+              </div>
             </div>
           </div>
         `,
@@ -786,6 +890,18 @@ function bindBookingsTabEvents(
         cancelButtonText: 'Cancelar',
         preConfirm: () => {
           return {
+            customerName: (document.getElementById('swal-edit-name') as HTMLInputElement).value.trim(),
+            riderAge: Number((document.getElementById('swal-edit-age') as HTMLInputElement).value) || (document.getElementById('swal-edit-age') as HTMLInputElement).value.trim(),
+            documentType: (document.getElementById('swal-edit-doctype') as HTMLInputElement).value.trim() || 'C.C.',
+            customerDocument: (document.getElementById('swal-edit-doc') as HTMLInputElement).value.trim(),
+            guardianName: (document.getElementById('swal-edit-guardian') as HTMLInputElement).value.trim(),
+            emergencyPhone: (document.getElementById('swal-edit-sos') as HTMLInputElement).value.trim(),
+            customerPhone: (document.getElementById('swal-edit-phone') as HTMLInputElement).value.trim(),
+            customerEmail: (document.getElementById('swal-edit-email') as HTMLInputElement).value.trim(),
+            eps: (document.getElementById('swal-edit-eps') as HTMLInputElement).value.trim(),
+            bloodType: (document.getElementById('swal-edit-blood') as HTMLInputElement).value.trim() || 'O+',
+            address: (document.getElementById('swal-edit-address') as HTMLInputElement).value.trim(),
+            ownBike: (document.getElementById('swal-edit-bike') as HTMLInputElement).value.trim(),
             date: (document.getElementById('swal-edit-date') as HTMLInputElement).value,
             timeSlot: (document.getElementById('swal-edit-time') as HTMLInputElement).value.trim(),
             quantity: Number((document.getElementById('swal-edit-qty') as HTMLInputElement).value) || 1,
@@ -1349,12 +1465,52 @@ function renderScheduleTab(
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-5 pt-1">
-          <div class="rounded-xl border border-white/15 bg-carbon/90 p-4 space-y-2">
-            <label for="sched-holidays" class="x-label">
-              Fechas Festivas (YYYY-MM-DD separadas por coma)
-            </label>
-            <textarea id="sched-holidays" rows="2" class="x-input text-xs font-mono">${escapeHtml(config.schedule.holidays.join(', '))}</textarea>
-            <label class="inline-flex items-center gap-2 text-xs text-white/85 cursor-pointer pt-1">
+          <!-- 1. Fechas Festivas con Selector de Calendario y Chips -->
+          <div class="rounded-xl border border-white/15 bg-carbon/90 p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="x-label mb-0 text-lime-electric">Fechas Festivas (Horario Fin de Semana)</span>
+              <button
+                type="button"
+                id="quick-load-colombia-holidays-btn"
+                class="text-[11px] font-subtitle font-semibold text-lime-neon underline hover:text-white"
+              >
+                ⚡ Cargar Festivos Colombia 2026
+              </button>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <div class="relative flex-1">
+                <input
+                  type="date"
+                  id="holiday-date-picker"
+                  class="x-input text-xs font-semibold cursor-pointer select-none"
+                  style="caret-color: transparent;"
+                  title="Selecciona la fecha festiva"
+                />
+              </div>
+              <button
+                type="button"
+                id="add-holiday-btn"
+                class="rounded-xl border border-lime-electric/50 bg-lime-electric/20 px-3 py-2 font-subtitle text-xs font-semibold text-lime-electric hover:bg-lime-electric hover:text-carbon transition-colors whitespace-nowrap"
+              >
+                + Agregar Festivo
+              </button>
+            </div>
+
+            <div id="holidays-chips-container" class="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pt-1">
+              ${config.schedule.holidays
+                .map(
+                  (h) => `
+                <span class="inline-flex items-center gap-1.5 rounded-lg border border-white/20 bg-graphite/80 px-2.5 py-1 text-xs text-white">
+                  <strong class="font-mono text-lime-electric">${escapeHtml(h)}</strong>
+                  <button type="button" data-remove-holiday="${escapeHtml(h)}" class="remove-holiday-chip-btn text-white/50 hover:text-red-400 p-0.5" title="Quitar fecha festiva">✕</button>
+                </span>
+              `
+                )
+                .join('')}
+            </div>
+
+            <label class="inline-flex items-center gap-2 text-xs text-white/85 cursor-pointer pt-1 border-t border-white/10">
               <input
                 type="checkbox"
                 id="sched-monday-open"
@@ -1365,11 +1521,48 @@ function renderScheduleTab(
             </label>
           </div>
 
-          <div class="rounded-xl border border-white/15 bg-carbon/90 p-4 space-y-2">
-            <label for="sched-blocked-dates" class="x-label text-red-300">
-              Fechas Cerradas Completas (Mantenimiento / Clima - YYYY-MM-DD)
-            </label>
-            <textarea id="sched-blocked-dates" rows="2" class="x-input text-xs font-mono" placeholder="Ej. 2026-11-24, 2026-12-25">${escapeHtml(config.schedule.blockedDates.join(', '))}</textarea>
+          <!-- 2. Fechas Cerradas Completas con Selector de Calendario y Chips -->
+          <div class="rounded-xl border border-white/15 bg-carbon/90 p-4 space-y-3">
+            <div>
+              <span class="x-label mb-0 text-red-300">Fechas Cerradas Completas (Mantenimiento / Clima)</span>
+              <p class="text-[11px] text-white/50">En estas fechas el parque no recibirá reservas en ningún horario.</p>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <div class="relative flex-1">
+                <input
+                  type="date"
+                  id="blocked-date-picker"
+                  class="x-input text-xs font-semibold cursor-pointer select-none"
+                  style="caret-color: transparent;"
+                  title="Selecciona la fecha a cerrar"
+                />
+              </div>
+              <button
+                type="button"
+                id="add-blocked-date-btn"
+                class="rounded-xl border border-red-500/50 bg-red-500/20 px-3 py-2 font-subtitle text-xs font-semibold text-red-300 hover:bg-red-500 hover:text-white transition-colors whitespace-nowrap"
+              >
+                + Agregar Fecha Cerrada
+              </button>
+            </div>
+
+            <div id="blocked-dates-chips-container" class="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pt-1">
+              ${
+                config.schedule.blockedDates.length === 0
+                  ? `<span class="text-xs text-white/40 italic py-1">No hay fechas cerradas registradas actualmente.</span>`
+                  : config.schedule.blockedDates
+                      .map(
+                        (bDate) => `
+                    <span class="inline-flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/15 px-2.5 py-1 text-xs text-red-200">
+                      <strong class="font-mono">${escapeHtml(bDate)}</strong>
+                      <button type="button" data-remove-blocked-date="${escapeHtml(bDate)}" class="remove-blocked-chip-btn text-red-300/60 hover:text-white p-0.5" title="Reabrir esta fecha">✕</button>
+                    </span>
+                  `
+                      )
+                      .join('')
+              }
+            </div>
           </div>
         </div>
 
@@ -1584,6 +1777,130 @@ function bindScheduleTabEvents(
 
   const currentWeekdaySlots = new Set<string>(config.schedule.weekdayHours.map(parseSheetTime));
   const currentWeekendSlots = new Set<string>(config.schedule.weekendHolidayHours.map(parseSheetTime));
+  const currentHolidays = new Set<string>(config.schedule.holidays.map(parseSheetDate).filter(Boolean));
+  const currentBlockedDates = new Set<string>(config.schedule.blockedDates.map(parseSheetDate).filter(Boolean));
+
+  const updateHolidaysUI = () => {
+    const container = document.getElementById('holidays-chips-container');
+    if (!container) return;
+    const sorted = Array.from(currentHolidays).sort();
+    if (sorted.length === 0) {
+      container.innerHTML = `<span class="text-xs text-white/40 italic py-1">No hay fechas festivas registradas.</span>`;
+      return;
+    }
+    container.innerHTML = sorted
+      .map(
+        (h) => `
+      <span class="inline-flex items-center gap-1.5 rounded-lg border border-white/20 bg-graphite/80 px-2.5 py-1 text-xs text-white">
+        <strong class="font-mono text-lime-electric">${escapeHtml(h)}</strong>
+        <button type="button" data-remove-holiday="${escapeHtml(h)}" class="remove-holiday-chip-btn text-white/50 hover:text-red-400 p-0.5" title="Quitar fecha festiva">✕</button>
+      </span>
+    `
+      )
+      .join('');
+
+    container.querySelectorAll<HTMLButtonElement>('.remove-holiday-chip-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const target = btn.getAttribute('data-remove-holiday');
+        if (target) {
+          currentHolidays.delete(target);
+          updateHolidaysUI();
+        }
+      });
+    });
+  };
+
+  const updateBlockedDatesUI = () => {
+    const container = document.getElementById('blocked-dates-chips-container');
+    if (!container) return;
+    const sorted = Array.from(currentBlockedDates).sort();
+    if (sorted.length === 0) {
+      container.innerHTML = `<span class="text-xs text-white/40 italic py-1">No hay fechas cerradas registradas actualmente.</span>`;
+      return;
+    }
+    container.innerHTML = sorted
+      .map(
+        (bDate) => `
+      <span class="inline-flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-500/15 px-2.5 py-1 text-xs text-red-200">
+        <strong class="font-mono">${escapeHtml(bDate)}</strong>
+        <button type="button" data-remove-blocked-date="${escapeHtml(bDate)}" class="remove-blocked-chip-btn text-red-300/60 hover:text-white p-0.5" title="Reabrir esta fecha">✕</button>
+      </span>
+    `
+      )
+      .join('');
+
+    container.querySelectorAll<HTMLButtonElement>('.remove-blocked-chip-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const target = btn.getAttribute('data-remove-blocked-date');
+        if (target) {
+          currentBlockedDates.delete(target);
+          updateBlockedDatesUI();
+        }
+      });
+    });
+  };
+
+  // Inicializar listeners de chips ya renderizados
+  updateHolidaysUI();
+  updateBlockedDatesUI();
+
+  // Agregar festivo desde calendario
+  const holidayPicker = document.getElementById('holiday-date-picker') as HTMLInputElement | null;
+  document.getElementById('add-holiday-btn')?.addEventListener('click', () => {
+    if (!holidayPicker || !holidayPicker.value) {
+      void Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'info',
+        title: 'Selecciona una fecha en el calendario',
+        timer: 2000,
+        showConfirmButton: false,
+      });
+      return;
+    }
+    const clean = parseSheetDate(holidayPicker.value);
+    if (clean) {
+      currentHolidays.add(clean);
+      holidayPicker.value = '';
+      updateHolidaysUI();
+    }
+  });
+
+  // Cargar festivos Colombia 2026
+  document.getElementById('quick-load-colombia-holidays-btn')?.addEventListener('click', () => {
+    DEFAULT_PARK_CONFIG.schedule.holidays.forEach((d) => currentHolidays.add(d));
+    updateHolidaysUI();
+    void Swal.fire({
+      toast: true,
+      position: 'top-end',
+      icon: 'success',
+      title: 'Festivos de Colombia 2026 cargados',
+      timer: 1800,
+      showConfirmButton: false,
+    });
+  });
+
+  // Agregar fecha cerrada desde calendario
+  const blockedPicker = document.getElementById('blocked-date-picker') as HTMLInputElement | null;
+  document.getElementById('add-blocked-date-btn')?.addEventListener('click', () => {
+    if (!blockedPicker || !blockedPicker.value) {
+      void Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'info',
+        title: 'Selecciona una fecha en el calendario',
+        timer: 2000,
+        showConfirmButton: false,
+      });
+      return;
+    }
+    const clean = parseSheetDate(blockedPicker.value);
+    if (clean) {
+      currentBlockedDates.add(clean);
+      blockedPicker.value = '';
+      updateBlockedDatesUI();
+    }
+  });
 
   const updateWeekdayUI = () => {
     app.querySelectorAll<HTMLButtonElement>('.weekday-slot-toggle-btn').forEach((btn) => {
@@ -1716,12 +2033,8 @@ function bindScheduleTabEvents(
     const weekendScheduleLabel =
       (document.getElementById('sched-weekend-label') as HTMLInputElement)?.value.trim() ||
       '9:00 a. m. – 6:00 p. m.';
-    const holidays = parseList(
-      (document.getElementById('sched-holidays') as HTMLTextAreaElement)?.value || ''
-    );
-    const blockedDates = parseList(
-      (document.getElementById('sched-blocked-dates') as HTMLTextAreaElement)?.value || ''
-    );
+    const holidays = Array.from(currentHolidays).sort();
+    const blockedDates = Array.from(currentBlockedDates).sort();
     const mondayOpen =
       (document.getElementById('sched-monday-open') as HTMLInputElement)?.checked ?? false;
 

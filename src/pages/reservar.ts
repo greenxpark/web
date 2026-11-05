@@ -240,9 +240,17 @@ function renderReservarView(
 
   // Preserve current form input values if re-rendering
   const prevName = (document.getElementById('customerName') as HTMLInputElement | null)?.value ?? '';
+  const prevDocType = (document.getElementById('documentType') as HTMLSelectElement | null)?.value ?? 'C.C.';
   const prevDoc = (document.getElementById('customerDocument') as HTMLInputElement | null)?.value ?? '';
+  const prevAge = (document.getElementById('riderAge') as HTMLInputElement | null)?.value ?? '';
+  const prevGuardian = (document.getElementById('guardianName') as HTMLInputElement | null)?.value ?? '';
   const prevPhone = (document.getElementById('customerPhone') as HTMLInputElement | null)?.value ?? '';
+  const prevEmergencyPhone = (document.getElementById('emergencyPhone') as HTMLInputElement | null)?.value ?? '';
   const prevEmail = (document.getElementById('customerEmail') as HTMLInputElement | null)?.value ?? '';
+  const prevEps = (document.getElementById('eps') as HTMLInputElement | null)?.value ?? '';
+  const prevBlood = (document.getElementById('bloodType') as HTMLSelectElement | null)?.value ?? 'O+';
+  const prevAddress = (document.getElementById('address') as HTMLInputElement | null)?.value ?? '';
+  const prevOwnBike = (document.getElementById('ownBike') as HTMLInputElement | null)?.value ?? '';
   const prevLevel = (document.getElementById('experienceLevel') as HTMLSelectElement | null)?.value ?? 'Primera vez (Principiante)';
   const prevNotes = (document.getElementById('riderNotes') as HTMLTextAreaElement | null)?.value ?? '';
 
@@ -802,25 +810,61 @@ function renderReservarView(
                   }
                 </div>
 
-                <!-- FORMULARIO SENCILLO DE RESERVA -->
+                <!-- FORMULARIO DE RESERVA Y FICHA DE CONTRATO DEL PILOTO -->
                 <form id="booking-form" method="POST" action="#reservar" class="space-y-4" novalidate>
-                  <div>
-                    <label for="customerName" class="x-label">Nombre Completo *</label>
-                    <input
-                      type="text"
-                      id="customerName"
-                      name="customerName"
-                      autocomplete="name"
-                      required
-                      value="${escapeHtml(prevName)}"
-                      placeholder="Ej. Sebastián Morales"
-                      class="x-input"
-                    />
+                  <div class="border-b border-white/10 pb-2">
+                    <h3 class="font-subtitle text-xs font-semibold uppercase tracking-wider text-lime-electric">
+                      Paso 4: Ficha del Piloto y Contrato de Compromiso
+                    </h3>
+                    <p class="text-[11px] text-white/60">
+                      Datos oficiales para la Carta de Compromiso, Póliza y Convenio de GREEN X PARK.
+                    </p>
                   </div>
 
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                    <div>
-                      <label for="customerDocument" class="x-label">Cédula / Documento *</label>
+                  <!-- 1. Nombre Completo y Edad -->
+                  <div class="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                    <div class="sm:col-span-8">
+                      <label for="customerName" class="x-label">Nombres y Apellidos del Piloto *</label>
+                      <input
+                        type="text"
+                        id="customerName"
+                        name="customerName"
+                        autocomplete="name"
+                        required
+                        value="${escapeHtml(prevName)}"
+                        placeholder="Ej. Sebastián Morales Ospina"
+                        class="x-input"
+                      />
+                    </div>
+                    <div class="sm:col-span-4">
+                      <label for="riderAge" class="x-label">Edad del Piloto *</label>
+                      <input
+                        type="number"
+                        id="riderAge"
+                        name="riderAge"
+                        min="5"
+                        max="99"
+                        required
+                        value="${escapeHtml(String(prevAge))}"
+                        placeholder="Ej. 24"
+                        class="x-input"
+                      />
+                    </div>
+                  </div>
+
+                  <!-- 2. Tipo de Documento y Número de Documento -->
+                  <div class="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                    <div class="sm:col-span-5">
+                      <label for="documentType" class="x-label">Tipo de Documento *</label>
+                      <select id="documentType" name="documentType" class="x-input" required>
+                        <option value="C.C." ${prevDocType === 'C.C.' ? 'selected' : ''}>Cédula de Ciudadanía (C.C.)</option>
+                        <option value="T.I." ${prevDocType === 'T.I.' ? 'selected' : ''}>Tarjeta de Identidad (T.I.)</option>
+                        <option value="C.E." ${prevDocType === 'C.E.' ? 'selected' : ''}>Cédula de Extranjería (C.E.)</option>
+                        <option value="Pasaporte" ${prevDocType === 'Pasaporte' ? 'selected' : ''}>Pasaporte</option>
+                      </select>
+                    </div>
+                    <div class="sm:col-span-7">
+                      <label for="customerDocument" class="x-label">Número de Documento *</label>
                       <input
                         type="text"
                         id="customerDocument"
@@ -835,8 +879,42 @@ function renderReservarView(
                         class="x-input"
                       />
                     </div>
+                  </div>
+
+                  <!-- 3. Tutor Legal (si menor de edad) y Teléfono de Emergencia -->
+                  <div class="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                    <div class="sm:col-span-7">
+                      <label for="guardianName" class="x-label">
+                        Nombre del Tutor / Acudiente <span class="text-white/40 font-normal">(Si es menor de 18 años)</span>
+                      </label>
+                      <input
+                        type="text"
+                        id="guardianName"
+                        name="guardianName"
+                        value="${escapeHtml(prevGuardian)}"
+                        placeholder="Nombre completo del acudiente"
+                        class="x-input"
+                      />
+                    </div>
+                    <div class="sm:col-span-5">
+                      <label for="emergencyPhone" class="x-label">Teléfono de Emergencia *</label>
+                      <input
+                        type="tel"
+                        id="emergencyPhone"
+                        name="emergencyPhone"
+                        inputmode="tel"
+                        required
+                        value="${escapeHtml(prevEmergencyPhone)}"
+                        placeholder="Ej. 310 123 4567"
+                        class="x-input"
+                      />
+                    </div>
+                  </div>
+
+                  <!-- 4. Celular WhatsApp y Correo Electrónico -->
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label for="customerPhone" class="x-label">Celular (WhatsApp) *</label>
+                      <label for="customerPhone" class="x-label">Teléfono / WhatsApp *</label>
                       <input
                         type="tel"
                         id="customerPhone"
@@ -849,9 +927,6 @@ function renderReservarView(
                         class="x-input"
                       />
                     </div>
-                  </div>
-
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div>
                       <label for="customerEmail" class="x-label">Correo Electrónico *</label>
                       <input
@@ -868,17 +943,80 @@ function renderReservarView(
                         class="x-input"
                       />
                     </div>
+                  </div>
+
+                  <!-- 5. EPS y RH / Grupo Sanguíneo -->
+                  <div class="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                    <div class="sm:col-span-8">
+                      <label for="eps" class="x-label">EPS (Entidad de Salud) *</label>
+                      <input
+                        type="text"
+                        id="eps"
+                        name="eps"
+                        required
+                        value="${escapeHtml(prevEps)}"
+                        placeholder="Ej. Sura, Sanitas, Compensar, Nueva EPS"
+                        class="x-input"
+                      />
+                    </div>
+                    <div class="sm:col-span-4">
+                      <label for="bloodType" class="x-label">RH / Grupo Sanguíneo *</label>
+                      <select id="bloodType" name="bloodType" class="x-input" required>
+                        <option value="O+" ${prevBlood === 'O+' ? 'selected' : ''}>O+</option>
+                        <option value="O-" ${prevBlood === 'O-' ? 'selected' : ''}>O-</option>
+                        <option value="A+" ${prevBlood === 'A+' ? 'selected' : ''}>A+</option>
+                        <option value="A-" ${prevBlood === 'A-' ? 'selected' : ''}>A-</option>
+                        <option value="B+" ${prevBlood === 'B+' ? 'selected' : ''}>B+</option>
+                        <option value="B-" ${prevBlood === 'B-' ? 'selected' : ''}>B-</option>
+                        <option value="AB+" ${prevBlood === 'AB+' ? 'selected' : ''}>AB+</option>
+                        <option value="AB-" ${prevBlood === 'AB-' ? 'selected' : ''}>AB-</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <!-- 6. Dirección / Municipio de Residencia -->
+                  <div>
+                    <label for="address" class="x-label">Dirección / Municipio de Residencia *</label>
+                    <input
+                      type="text"
+                      id="address"
+                      name="address"
+                      autocomplete="street-address"
+                      required
+                      value="${escapeHtml(prevAddress)}"
+                      placeholder="Ej. Carrera 7 # 12-34, Chía / Bogotá"
+                      class="x-input"
+                    />
+                  </div>
+
+                  <!-- 7. Datos de la Moto (si es Práctica Libre o propia) -->
+                  <div>
+                    <label for="ownBike" class="x-label">
+                      Motocicleta (Marca / Cilindrada)
+                      <span class="text-white/40 font-normal">
+                        ${state.serviceType === 'practica_libre' ? '(Obligatorio para Práctica Libre)' : '(Opcional si alquilas Pit Bike)'}
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      id="ownBike"
+                      name="ownBike"
+                      value="${escapeHtml(prevOwnBike)}"
+                      placeholder="${state.serviceType === 'practica_libre' ? 'Ej. Yamaha YZ 125 2T / KTM 250 SX-F' : 'Ej. Pit Bike 110cc / N/A'}"
+                      class="x-input"
+                    />
+                  </div>
+
+                  <!-- 8. Nivel de Experiencia y Medio de Pago -->
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label for="experienceLevel" class="x-label">Nivel / Experiencia</label>
+                      <label for="experienceLevel" class="x-label">Nivel de Conducción</label>
                       <select id="experienceLevel" name="experienceLevel" class="x-input">
                         <option value="Primera vez (Principiante)" ${prevLevel === 'Primera vez (Principiante)' ? 'selected' : ''}>Primera vez (Principiante)</option>
                         <option value="Básico / Recreativo" ${prevLevel === 'Básico / Recreativo' ? 'selected' : ''}>Básico / Recreativo</option>
                         <option value="Intermedio / Avanzado" ${prevLevel === 'Intermedio / Avanzado' ? 'selected' : ''}>Intermedio / Avanzado</option>
                       </select>
                     </div>
-                  </div>
-
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div>
                       <label for="paymentMethod" class="x-label">Medio de Pago Usado *</label>
                       <select id="paymentMethod" name="paymentMethod" class="x-input">
@@ -891,17 +1029,19 @@ function renderReservarView(
                         }
                       </select>
                     </div>
-                    <div>
-                      <label for="riderNotes" class="x-label">Edades / Notas (Opcional)</label>
-                      <input
-                        type="text"
-                        id="riderNotes"
-                        name="riderNotes"
-                        value="${escapeHtml(prevNotes)}"
-                        placeholder="Ej. Adulto y niño de 11 años"
-                        class="x-input"
-                      />
-                    </div>
+                  </div>
+
+                  <!-- 9. Observaciones o Acompañantes -->
+                  <div>
+                    <label for="riderNotes" class="x-label">Observaciones Adicionales (Opcional)</label>
+                    <input
+                      type="text"
+                      id="riderNotes"
+                      name="riderNotes"
+                      value="${escapeHtml(prevNotes)}"
+                      placeholder="Ej. Talla de casco o requerimientos especiales"
+                      class="x-input"
+                    />
                   </div>
 
                   <!-- Subida de Comprobante de Pago -->
@@ -945,7 +1085,7 @@ function renderReservarView(
                     </label>
                   </div>
 
-                  <!-- Checkbox Tratamiento de Datos y Exoneración de Responsabilidad -->
+                  <!-- Checkbox Tratamiento de Datos, Carta de Compromiso y Exoneración de Responsabilidad -->
                   <div class="rounded-xl border border-white/15 bg-carbon/90 p-3.5">
                     <div class="flex items-start gap-3">
                       <input
@@ -958,16 +1098,16 @@ function renderReservarView(
                       />
                       <div class="text-xs text-white/85 leading-relaxed">
                         <label for="acceptedTerms" class="cursor-pointer">
-                          He leído y acepto la
+                          He leído y acepto íntegramente la
                         </label>
                         <button
                           type="button"
                           id="open-legal-modal-btn"
                           class="font-subtitle font-semibold text-lime-electric underline hover:text-lime-neon focus:outline-none ml-1"
                         >
-                          Autorización de Tratamiento de Datos Personales y Exoneración de Responsabilidad
+                          Carta de Compromiso Usuario, Exoneración y Convenio de Prácticas
                         </button>
-                        <span> de GREEN X PARK, y me comprometo a llegar 30 minutos antes de mi turno. *</span>
+                        <span> de GREEN X PARK, asumo el 100% de la responsabilidad civil y me comprometo a llegar 30 minutos antes. *</span>
                       </div>
                     </div>
                   </div>
@@ -996,7 +1136,7 @@ function renderReservarView(
         id="legal-modal"
         closedby="any"
         aria-labelledby="legal-modal-title"
-        class="w-full max-w-2xl rounded-2xl border border-lime-electric/40 bg-carbon-card p-0 text-white shadow-2xl"
+        class="w-full max-w-3xl rounded-2xl border border-lime-electric/40 bg-carbon-card p-0 text-white shadow-2xl"
       >
         <div class="border-b border-white/10 bg-graphite/80 px-6 py-4 flex items-center justify-between gap-4">
           <div class="flex items-center gap-2.5">
@@ -1017,19 +1157,29 @@ function renderReservarView(
           </form>
         </div>
 
-        <div class="max-h-[65vh] overflow-y-auto px-6 py-5 space-y-5 text-sm text-white/85 leading-relaxed">
+        <div class="max-h-[68vh] overflow-y-auto px-6 py-5 space-y-5 text-sm text-white/85 leading-relaxed">
           <div class="rounded-xl border border-lime-electric/30 bg-lime-electric/10 p-4 text-xs text-white/95">
-            <strong class="text-lime-electric font-subtitle uppercase block mb-1">Puntualidad e Inducción:</strong>
+            <strong class="text-lime-electric font-subtitle uppercase block mb-1">Puntualidad e Inducción Obligatoria:</strong>
             ${escapeHtml(config.legalTexts.arrivalNoticeText)}
           </div>
 
-          <div class="space-y-2 whitespace-pre-line font-body">
+          <div class="space-y-2 whitespace-pre-line font-body text-xs sm:text-sm text-white/80">
             ${escapeHtml(config.legalTexts.dataTreatmentText)}
           </div>
 
-          <div class="border-t border-white/10 pt-4 space-y-2 whitespace-pre-line font-body">
+          <div class="border-t border-white/10 pt-4 space-y-2 whitespace-pre-line font-body text-xs sm:text-sm text-white/90">
             ${escapeHtml(config.legalTexts.waiverText)}
           </div>
+
+          ${
+            config.legalTexts.contractConvenioText
+              ? `
+            <div class="border-t border-white/10 pt-4 space-y-2 whitespace-pre-line font-body text-xs sm:text-sm text-white/90">
+              ${escapeHtml(config.legalTexts.contractConvenioText)}
+            </div>
+          `
+              : ''
+          }
         </div>
 
         <div class="border-t border-white/10 bg-graphite/60 px-6 py-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3">
@@ -1747,12 +1897,28 @@ function bindReservarInteractions(
 
       const customerName =
         (document.getElementById('customerName') as HTMLInputElement | null)?.value.trim() ?? '';
+      const riderAge =
+        (document.getElementById('riderAge') as HTMLInputElement | null)?.value.trim() ?? '';
+      const documentType =
+        (document.getElementById('documentType') as HTMLSelectElement | null)?.value ?? 'C.C.';
       const customerDocument =
         (document.getElementById('customerDocument') as HTMLInputElement | null)?.value.trim() ?? '';
+      const guardianName =
+        (document.getElementById('guardianName') as HTMLInputElement | null)?.value.trim() ?? '';
+      const emergencyPhone =
+        (document.getElementById('emergencyPhone') as HTMLInputElement | null)?.value.trim() ?? '';
       const customerPhone =
         (document.getElementById('customerPhone') as HTMLInputElement | null)?.value.trim() ?? '';
       const customerEmail =
         (document.getElementById('customerEmail') as HTMLInputElement | null)?.value.trim() ?? '';
+      const eps =
+        (document.getElementById('eps') as HTMLInputElement | null)?.value.trim() ?? '';
+      const bloodType =
+        (document.getElementById('bloodType') as HTMLSelectElement | null)?.value ?? 'O+';
+      const address =
+        (document.getElementById('address') as HTMLInputElement | null)?.value.trim() ?? '';
+      const ownBike =
+        (document.getElementById('ownBike') as HTMLInputElement | null)?.value.trim() ?? '';
       const experienceLevel =
         (document.getElementById('experienceLevel') as HTMLSelectElement | null)?.value ??
         'Primera vez (Principiante)';
@@ -1770,11 +1936,40 @@ function bindReservarInteractions(
         return;
       }
 
-      if (!customerName || !customerDocument || !customerPhone || !customerEmail) {
+      if (
+        !customerName ||
+        !riderAge ||
+        !customerDocument ||
+        !emergencyPhone ||
+        !customerPhone ||
+        !customerEmail ||
+        !eps ||
+        !bloodType ||
+        !address
+      ) {
         await Swal.fire({
           icon: 'warning',
-          title: 'Datos incompletos',
-          text: 'Por favor completa tu nombre, documento, celular (WhatsApp) y correo electrónico.',
+          title: 'Faltan datos obligatorios del contrato',
+          text: 'Por favor completa todos los campos del piloto: nombre, edad, documento, celular, teléfono de emergencia, correo, EPS, RH y dirección.',
+        });
+        return;
+      }
+
+      const parsedAge = Number(riderAge);
+      if (parsedAge < 18 && !guardianName) {
+        await Swal.fire({
+          icon: 'warning',
+          title: 'Acudiente requerido para menores',
+          text: 'Al ser el piloto menor de 18 años, es obligatorio ingresar el nombre del padre, madre o tutor legal responsable.',
+        });
+        return;
+      }
+
+      if (state.serviceType === 'practica_libre' && !ownBike) {
+        await Swal.fire({
+          icon: 'warning',
+          title: 'Datos de la motocicleta requeridos',
+          text: 'Para la modalidad de Práctica Libre con moto propia, ingresa la marca y cilindrada de tu vehículo.',
         });
         return;
       }
@@ -1791,8 +1986,8 @@ function bindReservarInteractions(
       if (!state.acceptedTerms) {
         await Swal.fire({
           icon: 'warning',
-          title: 'Autorización requerida',
-          text: 'Debes aceptar la Autorización de Tratamiento de Datos y Exoneración de Responsabilidad para continuar.',
+          title: 'Aceptación de Carta de Compromiso requerida',
+          text: 'Debes aceptar la Carta de Compromiso, Exoneración y Convenio de GREEN X PARK para apartar tu cupo.',
         });
         return;
       }
@@ -1812,9 +2007,17 @@ function bindReservarInteractions(
           unitPrice: pricing.unitPrice,
           totalPrice: pricing.totalPrice,
           customerName,
+          documentType,
           customerDocument,
+          riderAge: parsedAge || riderAge,
+          guardianName,
+          emergencyPhone,
           customerPhone,
           customerEmail,
+          eps,
+          bloodType,
+          address,
+          ownBike,
           experienceLevel,
           riderNotes,
           paymentMethod,

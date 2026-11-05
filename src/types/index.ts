@@ -74,6 +74,7 @@ export interface LegalTextsConfig {
   dataTreatmentText: string;
   waiverText: string;
   arrivalNoticeText: string;
+  contractConvenioText?: string;
 }
 
 export interface ParkConfig {
@@ -99,9 +100,17 @@ export interface Booking {
   unitPrice: number;
   totalPrice: number;
   customerName: string;
+  documentType?: string;
   customerDocument: string;
   customerPhone: string;
   customerEmail: string;
+  riderAge?: number | string;
+  guardianName?: string;
+  emergencyPhone?: string;
+  eps?: string;
+  bloodType?: string;
+  address?: string;
+  ownBike?: string;
   experienceLevel: string;
   riderNotes: string;
   paymentMethod: string;
@@ -128,9 +137,17 @@ export interface BookingCreatePayload {
   unitPrice: number;
   totalPrice: number;
   customerName: string;
+  documentType?: string;
   customerDocument: string;
   customerPhone: string;
   customerEmail: string;
+  riderAge?: number | string;
+  guardianName?: string;
+  emergencyPhone?: string;
+  eps?: string;
+  bloodType?: string;
+  address?: string;
+  ownBike?: string;
   experienceLevel: string;
   riderNotes: string;
   paymentMethod: string;

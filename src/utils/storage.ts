@@ -197,6 +197,9 @@ export function normalizeParkConfig(raw?: Partial<ParkConfig> | null): ParkConfi
     arrivalNoticeText: String(raw.legalTexts?.arrivalNoticeText ?? def.legalTexts.arrivalNoticeText),
     dataTreatmentText: String(raw.legalTexts?.dataTreatmentText ?? def.legalTexts.dataTreatmentText),
     waiverText: String(raw.legalTexts?.waiverText ?? def.legalTexts.waiverText),
+    contractConvenioText: String(
+      raw.legalTexts?.contractConvenioText ?? def.legalTexts.contractConvenioText ?? ''
+    ),
   };
 
   return {
@@ -242,9 +245,17 @@ export function normalizeBooking(raw: Record<string, unknown>): Booking {
     unitPrice: Number(raw.unitPrice ?? 0) || 0,
     totalPrice: Number(raw.totalPrice ?? 0) || 0,
     customerName: String(raw.customerName ?? ''),
+    documentType: String(raw.documentType ?? 'C.C.'),
     customerDocument: String(raw.customerDocument ?? ''),
     customerPhone: String(raw.customerPhone ?? ''),
     customerEmail: String(raw.customerEmail ?? ''),
+    riderAge: raw.riderAge ? Number(raw.riderAge) || String(raw.riderAge) : '',
+    guardianName: String(raw.guardianName ?? ''),
+    emergencyPhone: String(raw.emergencyPhone ?? ''),
+    eps: String(raw.eps ?? ''),
+    bloodType: String(raw.bloodType ?? 'O+'),
+    address: String(raw.address ?? ''),
+    ownBike: String(raw.ownBike ?? ''),
     experienceLevel: String(raw.experienceLevel ?? 'Primera vez (Principiante)'),
     riderNotes: String(raw.riderNotes ?? ''),
     paymentMethod: String(raw.paymentMethod ?? 'Nequi'),
@@ -572,9 +583,17 @@ export async function createBooking(payload: BookingCreatePayload): Promise<Book
     unitPrice: Number(payload.unitPrice) || 0,
     totalPrice: Number(payload.totalPrice) || 0,
     customerName: payload.customerName.trim(),
+    documentType: payload.documentType || 'C.C.',
     customerDocument: payload.customerDocument.trim(),
     customerPhone: payload.customerPhone.trim(),
     customerEmail: payload.customerEmail.trim(),
+    riderAge: payload.riderAge ? Number(payload.riderAge) || payload.riderAge : '',
+    guardianName: payload.guardianName ? payload.guardianName.trim() : '',
+    emergencyPhone: payload.emergencyPhone ? payload.emergencyPhone.trim() : '',
+    eps: payload.eps ? payload.eps.trim() : '',
+    bloodType: payload.bloodType ? payload.bloodType.trim() : 'O+',
+    address: payload.address ? payload.address.trim() : '',
+    ownBike: payload.ownBike ? payload.ownBike.trim() : '',
     experienceLevel: payload.experienceLevel,
     riderNotes: payload.riderNotes.trim(),
     paymentMethod: payload.paymentMethod,
@@ -665,7 +684,8 @@ export async function lookupCustomerBooking(
 ): Promise<Booking | null> {
   const cleanCode = code.trim().toUpperCase();
   const cleanDoc = customerDocument.replace(/\D/g, '');
-  if (!cleanCode) return null;
+  // REQUISITO ESTRICTO: Ambos campos son obligatorios y deben coincidir sin excepción
+  if (!cleanCode || !cleanDoc) return null;
 
   if (isApiEnabled()) {
     try {
@@ -679,28 +699,32 @@ export async function lookupCustomerBooking(
         document: cleanDoc,
       });
       if (res.booking) {
-        return normalizeBooking(res.booking);
+        const found = normalizeBooking(res.booking);
+        // Doble verificación de seguridad en el cliente: el documento DEBE coincidir
+        const foundDoc = String(found.customerDocument || '').replace(/\D/g, '');
+        if (foundDoc && foundDoc === cleanDoc) {
+          return found;
+        }
+        return null;
       }
-      if (res.error && res.error === 'No encontramos ninguna reserva con ese código y documento.') {
+      if (res.error && res.error.includes('No encontramos')) {
         return null;
       }
     } catch {
-      /* Fallback a búsqueda sobre publicBookings + caché local si el script aún no tiene lookupBooking */
+      /* Fallback solo a almacenamiento local de reservas con documento completo */
     }
   }
 
-  const bookings = await loadBookings({ forceRefresh: true });
-  const match = bookings.find((b) => {
-    const sameCode = b.code.trim().toUpperCase() === cleanCode;
-    if (!sameCode) return false;
-    // Si la reserva viene de caché local y tiene customerDocument, validarlo también
-    if (b.customerDocument && cleanDoc) {
-      return b.customerDocument.replace(/\D/g, '') === cleanDoc;
-    }
-    return true;
+  // Fallback local: SOLO buscar entre reservas que contengan registrado su documento
+  // y que coincida EXACTAMENTE con cleanDoc. Si no tiene documento o es diferente, NUNCA mostrar la reserva.
+  const localList = readLocal<Record<string, unknown>[]>(CONFIG.storageKeys.bookings) ?? [];
+  const match = localList.find((raw) => {
+    const rawCode = String(raw.code || '').trim().toUpperCase();
+    const rawDoc = String(raw.customerDocument || '').replace(/\D/g, '');
+    return rawCode === cleanCode && rawDoc && rawDoc === cleanDoc;
   });
 
-  return match ?? null;
+  return match ? normalizeBooking(match) : null;
 }
 
 /**
