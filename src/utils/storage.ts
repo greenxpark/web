@@ -290,17 +290,66 @@ export async function saveParkConfig(config: ParkConfig): Promise<ParkConfig> {
   return normalized;
 }
 
-// ─── Reservas (Bookings) y Disponibilidad en Tiempo Real ─────────────────────
+// ─── Reservas (Bookings) con Caché en Memoria + SWR (0 ms en UI) ─────────────
 
-export async function loadBookings(options: { forceRefresh?: boolean; throwOnError?: boolean } = {}): Promise<Booking[]> {
+let inMemoryBookings: Booking[] | null = null;
+let lastBookingsFetchTime = 0;
+const BOOKINGS_CACHE_TTL_MS = 45 * 1000;
+
+export function getCachedBookingsSync(): Booking[] {
+  if (inMemoryBookings) return inMemoryBookings;
+  const fromLocal = readLocal<Record<string, unknown>[]>(CONFIG.storageKeys.bookings);
+  if (Array.isArray(fromLocal)) {
+    inMemoryBookings = fromLocal.map(normalizeBooking);
+    return inMemoryBookings;
+  }
+  return [];
+}
+
+export async function loadBookings(options: {
+  forceRefresh?: boolean;
+  throwOnError?: boolean;
+  onUpdate?: (bookings: Booking[]) => void;
+} = {}): Promise<Booking[]> {
+  const cached = getCachedBookingsSync();
+  const now = Date.now();
+  const isAdmin = Boolean(sessionStorage.getItem(CONFIG.storageKeys.adminPassword));
+  const isFresh =
+    !isAdmin && lastBookingsFetchTime > 0 && now - lastBookingsFetchTime < BOOKINGS_CACHE_TTL_MS;
+
+  if (!options.forceRefresh && isFresh) {
+    return cached;
+  }
+
+  // SWR: si ya tenemos caché y no es forzado, devolver en 0 ms y actualizar en background
+  if (!options.forceRefresh && !isAdmin && lastBookingsFetchTime > 0 && isApiEnabled()) {
+    void (async () => {
+      try {
+        const data = await apiGet<{ bookings: Record<string, unknown>[] }>({
+          action: 'publicBookings',
+        });
+        if (Array.isArray(data.bookings)) {
+          const fresh = data.bookings.map(normalizeBooking);
+          lastBookingsFetchTime = Date.now();
+          inMemoryBookings = fresh;
+          writeLocal(CONFIG.storageKeys.bookings, fresh);
+          if (options.onUpdate) options.onUpdate(fresh);
+        }
+      } catch {
+        /* silencioso en background */
+      }
+    })();
+    return cached;
+  }
+
   if (isApiEnabled()) {
     try {
-      const action = sessionStorage.getItem(CONFIG.storageKeys.adminPassword)
-        ? 'bookings'
-        : 'publicBookings';
+      const action = isAdmin ? 'bookings' : 'publicBookings';
       const data = await apiGet<{ bookings: Record<string, unknown>[] }>({ action });
       if (Array.isArray(data.bookings)) {
         const list = data.bookings.map(normalizeBooking);
+        lastBookingsFetchTime = Date.now();
+        inMemoryBookings = list;
         writeLocal(CONFIG.storageKeys.bookings, list);
         return list;
       }
@@ -311,11 +360,8 @@ export async function loadBookings(options: { forceRefresh?: boolean; throwOnErr
     }
   }
 
-  const fromLocal = readLocal<Record<string, unknown>[]>(CONFIG.storageKeys.bookings);
-  if (Array.isArray(fromLocal)) {
-    return fromLocal.map(normalizeBooking);
-  }
-  return [];
+  lastBookingsFetchTime = Date.now();
+  return cached;
 }
 
 export function computeDayAvailability(
@@ -491,12 +537,16 @@ export async function createBooking(payload: BookingCreatePayload): Promise<Book
     });
     const saved = res.booking ? normalizeBooking(res.booking) : newBooking;
     const updatedList = [saved, ...bookings.filter((b) => b.id !== saved.id)];
+    inMemoryBookings = updatedList;
+    lastBookingsFetchTime = Date.now();
     writeLocal(CONFIG.storageKeys.bookings, updatedList);
     return saved;
   }
 
   // Modo Local (localStorage)
   const updatedList = [newBooking, ...bookings];
+  inMemoryBookings = updatedList;
+  lastBookingsFetchTime = Date.now();
   writeLocal(CONFIG.storageKeys.bookings, updatedList);
   return newBooking;
 }

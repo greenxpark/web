@@ -2,7 +2,7 @@ import { renderFooter } from '../components/footer';
 import { initNavbarEvents, renderNavbar } from '../components/navbar';
 import type { ParkConfig } from '../types';
 import { formatCOP } from '../utils/format';
-import { getCachedParkConfigSync, loadParkConfig } from '../utils/storage';
+import { getCachedParkConfigSync, loadBookings, loadParkConfig } from '../utils/storage';
 
 export function initServiciosPage(): void {
   const app = document.getElementById('app');
@@ -12,9 +12,12 @@ export function initServiciosPage(): void {
   renderView(app, initialConfig);
 
   void (async () => {
-    const fresh = await loadParkConfig({
-      onUpdate: (updated) => renderView(app, updated),
-    });
+    const [fresh] = await Promise.all([
+      loadParkConfig({
+        onUpdate: (updated) => renderView(app, updated),
+      }),
+      loadBookings(),
+    ]);
     renderView(app, fresh);
   })();
 }

@@ -16,6 +16,7 @@ import {
 import {
   computeDayAvailability,
   createBooking,
+  getCachedBookingsSync,
   getCachedParkConfigSync,
   loadBookings,
   loadParkConfig,
@@ -40,7 +41,7 @@ export function initReservarPage(): void {
   if (!app) return;
 
   let config = getCachedParkConfigSync();
-  let bookings: Booking[] = [];
+  let bookings: Booking[] = getCachedBookingsSync();
 
   const params = new URLSearchParams(window.location.search);
   const serviceParam = params.get('service');
@@ -84,15 +85,28 @@ export function initReservarPage(): void {
   const renderAll = () => {
     const dayAvail = computeDayAvailability(state.date, config, bookings);
     ensureValidTimeSlotAndQuantity(state, dayAvail);
-    renderReservarView(app, config, state, dayAvail);
-  };
+    renderReservarView(app, config, state, dayAvail, renderAll, (nextBookings) => {
+    bookings = nextBookings;
+    renderAll();
+  });
+}
 
   renderAll();
 
   void (async () => {
     const [freshCfg, freshBookings] = await Promise.all([
-      loadParkConfig(),
-      loadBookings({ forceRefresh: true }),
+      loadParkConfig({
+        onUpdate: (c) => {
+          config = c;
+          renderAll();
+        },
+      }),
+      loadBookings({
+        onUpdate: (b) => {
+          bookings = b;
+          renderAll();
+        },
+      }),
     ]);
     config = freshCfg;
     bookings = freshBookings;
@@ -211,7 +225,9 @@ function renderReservarView(
   app: HTMLElement,
   config: ParkConfig,
   state: BookingState,
-  dayAvail: DayAvailabilitySummary
+  dayAvail: DayAvailabilitySummary,
+  triggerInstantRerender: () => void,
+  onBookingsRefreshed: (bks: Booking[]) => void
 ): void {
   const activePackages = config.pitBikePackages.filter((p) => p.active);
   const pricing = calculateCurrentPricing(config, state, dayAvail);
@@ -1016,15 +1032,15 @@ function renderReservarView(
   `;
 
   initNavbarEvents();
-  bindReservarInteractions(app, config, state, dayAvail, pricing, () => {
-    const nextDayAvail = computeDayAvailability(state.date, config, []);
-    void loadBookings().then((bks) => {
-      const updatedAvail = computeDayAvailability(state.date, config, bks);
-      ensureValidTimeSlotAndQuantity(state, updatedAvail);
-      renderReservarView(app, config, state, updatedAvail);
-    });
-    void nextDayAvail;
-  });
+  bindReservarInteractions(
+    app,
+    config,
+    state,
+    dayAvail,
+    pricing,
+    triggerInstantRerender,
+    onBookingsRefreshed
+  );
 }
 
 function bindReservarInteractions(
@@ -1033,7 +1049,8 @@ function bindReservarInteractions(
   state: BookingState,
   dayAvail: DayAvailabilitySummary,
   pricing: ReturnType<typeof calculateCurrentPricing>,
-  triggerRerender: () => void
+  triggerRerender: () => void,
+  onBookingsRefreshed: (bks: Booking[]) => void
 ): void {
   // 1. Cambio de tipo de servicio
   app.querySelectorAll<HTMLButtonElement>('.service-tab-btn').forEach((btn) => {
@@ -1362,7 +1379,8 @@ function bindReservarInteractions(
           confirmButtonText: 'ENTENDIDO',
         });
 
-        triggerRerender();
+        const updatedBks = await loadBookings();
+        onBookingsRefreshed(updatedBks);
       } catch (err) {
         state.isSubmitting = false;
         triggerRerender();
