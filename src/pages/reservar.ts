@@ -495,15 +495,27 @@ function renderReservarView(
                   </div>
 
                   <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-                    <div class="flex-1">
+                    <div class="flex-1 relative flex items-center">
                       <input
                         type="date"
                         id="booking-date-input"
                         name="bookingDate"
                         min="${getTodayISO()}"
                         value="${state.date}"
-                        class="x-input font-subtitle font-semibold"
+                        class="x-input font-subtitle font-semibold cursor-pointer select-none pr-12 text-sm sm:text-base"
+                        style="caret-color: transparent;"
+                        tabindex="0"
+                        title="Haz clic para abrir el calendario interactivo"
                       />
+                      <button
+                        type="button"
+                        id="open-booking-calendar-btn"
+                        class="absolute right-3 p-1.5 text-lime-electric hover:text-white transition-colors"
+                        title="Desplegar calendario interactivo"
+                        aria-label="Abrir selector de fecha"
+                      >
+                        <span class="text-xl">📅</span>
+                      </button>
                     </div>
                     <div class="rounded-xl border border-white/10 bg-carbon/80 px-4 py-3 text-xs text-white/80">
                       <span class="block font-subtitle font-semibold text-lime-electric uppercase">
@@ -1188,12 +1200,39 @@ function bindReservarInteractions(
   });
 
   const dateInput = document.getElementById('booking-date-input') as HTMLInputElement | null;
+  const openCalBtn = document.getElementById('open-booking-calendar-btn');
+
   if (dateInput) {
+    // Evitar que el usuario pueda escribir manualmente letras o números por teclado
+    dateInput.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab' && e.key !== 'Escape') {
+        e.preventDefault();
+        try {
+          dateInput.showPicker();
+        } catch {}
+      }
+    });
+
+    // Desplegar el selector visual de calendario inmediatamente con un clic en cualquier parte
+    dateInput.addEventListener('click', () => {
+      try {
+        dateInput.showPicker();
+      } catch {}
+    });
+
     dateInput.addEventListener('change', () => {
       if (dateInput.value) {
         state.date = parseSheetDate(dateInput.value);
         triggerRerender();
       }
+    });
+  }
+
+  if (openCalBtn && dateInput) {
+    openCalBtn.addEventListener('click', () => {
+      try {
+        dateInput.showPicker();
+      } catch {}
     });
   }
 
@@ -1451,13 +1490,27 @@ function bindReservarInteractions(
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label for="reschedule-date-input" class="x-label">Nueva Fecha *</label>
-                  <input
-                    type="date"
-                    id="reschedule-date-input"
-                    min="${getTodayISO()}"
-                    value="${escapeHtml(selectedNewDate)}"
-                    class="x-input font-subtitle text-xs"
-                  />
+                  <div class="relative flex items-center">
+                    <input
+                      type="date"
+                      id="reschedule-date-input"
+                      min="${getTodayISO()}"
+                      value="${escapeHtml(selectedNewDate)}"
+                      class="x-input font-subtitle text-xs cursor-pointer select-none pr-9"
+                      style="caret-color: transparent;"
+                      tabindex="0"
+                      title="Haz clic para abrir el calendario"
+                    />
+                    <button
+                      type="button"
+                      id="open-reschedule-cal-btn"
+                      class="absolute right-2 p-1 text-lime-electric hover:text-white"
+                      title="Abrir calendario"
+                      aria-label="Abrir calendario"
+                    >
+                      📅
+                    </button>
+                  </div>
                 </div>
 
                 ${
@@ -1519,15 +1572,39 @@ function bindReservarInteractions(
       `;
 
       const newDateInput = document.getElementById('reschedule-date-input') as HTMLInputElement | null;
+      const openReschedBtn = document.getElementById('open-reschedule-cal-btn');
       const newTimeSelect = document.getElementById('reschedule-time-select') as HTMLSelectElement | null;
       const saveRescheduleBtn = document.getElementById('save-reschedule-btn') as HTMLButtonElement | null;
 
       if (newDateInput) {
+        newDateInput.addEventListener('keydown', (e) => {
+          if (e.key !== 'Tab' && e.key !== 'Escape') {
+            e.preventDefault();
+            try {
+              newDateInput.showPicker();
+            } catch {}
+          }
+        });
+
+        newDateInput.addEventListener('click', () => {
+          try {
+            newDateInput.showPicker();
+          } catch {}
+        });
+
         newDateInput.addEventListener('change', () => {
           if (newDateInput.value) {
             selectedNewDate = parseSheetDate(newDateInput.value);
             drawEditor();
           }
+        });
+      }
+
+      if (openReschedBtn && newDateInput) {
+        openReschedBtn.addEventListener('click', () => {
+          try {
+            newDateInput.showPicker();
+          } catch {}
         });
       }
 

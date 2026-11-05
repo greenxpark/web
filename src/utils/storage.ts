@@ -101,35 +101,58 @@ export function normalizeParkConfig(raw?: Partial<ParkConfig> | null): ParkConfi
         : structuredClone(def.privateEvents.idealFor),
   };
 
-  const schedule = {
-    pitBikeCapacityPerHour:
-      Number(raw.schedule?.pitBikeCapacityPerHour ?? def.schedule.pitBikeCapacityPerHour) || 5,
-    weekdayHours:
+    const hasHalfHourSlots = (arr: unknown[]) =>
+      arr.some((h) => typeof h === 'string' && h.includes(':30'));
+
+    const rawWeekday =
       Array.isArray(raw.schedule?.weekdayHours) && raw.schedule.weekdayHours.length > 0
-        ? raw.schedule.weekdayHours.map(String)
-        : structuredClone(def.schedule.weekdayHours),
-    weekendHolidayHours:
+        ? raw.schedule.weekdayHours.map((h) => parseSheetTime(h)).filter(Boolean)
+        : [];
+    const weekdayHours =
+      rawWeekday.length > 0 && hasHalfHourSlots(rawWeekday)
+        ? rawWeekday
+        : structuredClone(def.schedule.weekdayHours);
+
+    const rawWeekend =
       Array.isArray(raw.schedule?.weekendHolidayHours) && raw.schedule.weekendHolidayHours.length > 0
-        ? raw.schedule.weekendHolidayHours.map(String)
-        : structuredClone(def.schedule.weekendHolidayHours),
-    mondayOpen: parseBool(raw.schedule?.mondayOpen, def.schedule.mondayOpen),
-    weekdayScheduleLabel: String(
-      raw.schedule?.weekdayScheduleLabel ?? def.schedule.weekdayScheduleLabel
-    ),
-    weekendScheduleLabel: String(
-      raw.schedule?.weekendScheduleLabel ?? def.schedule.weekendScheduleLabel
-    ),
-    holidays: Array.isArray(raw.schedule?.holidays)
-      ? raw.schedule.holidays.map((d) => parseSheetDate(d)).filter(Boolean)
-      : structuredClone(def.schedule.holidays),
-    blockedDates: Array.isArray(raw.schedule?.blockedDates)
-      ? raw.schedule.blockedDates.map((d) => parseSheetDate(d)).filter(Boolean)
-      : [],
-    blockedSlots:
-      raw.schedule?.blockedSlots && typeof raw.schedule.blockedSlots === 'object'
-        ? (raw.schedule.blockedSlots as Record<string, string[]>)
-        : {},
-  };
+        ? raw.schedule.weekendHolidayHours.map((h) => parseSheetTime(h)).filter(Boolean)
+        : [];
+    const weekendHolidayHours =
+      rawWeekend.length > 0 && hasHalfHourSlots(rawWeekend)
+        ? rawWeekend
+        : structuredClone(def.schedule.weekendHolidayHours);
+
+    const schedule = {
+      pitBikeCapacityPerHour:
+        Number(raw.schedule?.pitBikeCapacityPerHour ?? def.schedule.pitBikeCapacityPerHour) || 5,
+      weekdayHours,
+      weekendHolidayHours,
+      mondayOpen: parseBool(raw.schedule?.mondayOpen, def.schedule.mondayOpen),
+      weekdayScheduleLabel: String(
+        raw.schedule?.weekdayScheduleLabel ?? def.schedule.weekdayScheduleLabel
+      ),
+      weekendScheduleLabel: String(
+        raw.schedule?.weekendScheduleLabel ?? def.schedule.weekendScheduleLabel
+      ),
+      holidays: Array.isArray(raw.schedule?.holidays)
+        ? raw.schedule.holidays.map((d) => parseSheetDate(d)).filter(Boolean)
+        : structuredClone(def.schedule.holidays),
+      blockedDates: Array.isArray(raw.schedule?.blockedDates)
+        ? raw.schedule.blockedDates.map((d) => parseSheetDate(d)).filter(Boolean)
+        : [],
+      blockedSlots: (() => {
+        const src = raw.schedule?.blockedSlots;
+        if (!src || typeof src !== 'object') return {};
+        const res: Record<string, string[]> = {};
+        Object.entries(src as Record<string, unknown>).forEach(([dateKey, slots]) => {
+          const cleanKey = parseSheetDate(dateKey);
+          if (cleanKey && Array.isArray(slots)) {
+            res[cleanKey] = slots.map((s) => parseSheetTime(s)).filter(Boolean);
+          }
+        });
+        return res;
+      })(),
+    };
 
   const paymentInfo = {
     whatsappNumber: String(raw.paymentInfo?.whatsappNumber ?? def.paymentInfo.whatsappNumber),
@@ -440,7 +463,9 @@ export function computeDayAvailability(
       ? config.schedule.weekendHolidayHours
       : config.schedule.weekdayHours;
 
-  const blockedForDate = config.schedule.blockedSlots?.[cleanDate] ?? [];
+  const blockedForDate = (config.schedule.blockedSlots?.[cleanDate] ?? []).map((s) =>
+    parseSheetTime(s)
+  );
   const totalCapacity = Math.max(1, config.schedule.pitBikeCapacityPerHour);
 
   const slots: SlotAvailability[] = baseHours.map((timeSlot) => {

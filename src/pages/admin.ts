@@ -10,6 +10,7 @@ import {
   formatTime12h,
   getTodayISO,
   parseSheetDate,
+  parseSheetTime,
 } from '../utils/format';
 import {
   deleteBooking,
@@ -431,7 +432,10 @@ function renderBookingsTab(
               type="date"
               id="filter-date"
               value="${escapeHtml(state.filterDate)}"
-              class="x-input text-sm"
+              class="x-input text-sm cursor-pointer select-none"
+              style="caret-color: transparent;"
+              tabindex="0"
+              title="Haz clic para abrir el calendario"
             />
           </div>
           <div>
@@ -643,10 +647,27 @@ function bindBookingsTabEvents(
   });
 
   const dateFilter = document.getElementById('filter-date') as HTMLInputElement | null;
-  dateFilter?.addEventListener('change', () => {
-    state.filterDate = dateFilter.value;
-    rerender();
-  });
+  if (dateFilter) {
+    dateFilter.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab' && e.key !== 'Escape') {
+        e.preventDefault();
+        try {
+          dateFilter.showPicker();
+        } catch {}
+      }
+    });
+
+    dateFilter.addEventListener('click', () => {
+      try {
+        dateFilter.showPicker();
+      } catch {}
+    });
+
+    dateFilter.addEventListener('change', () => {
+      state.filterDate = dateFilter.value;
+      rerender();
+    });
+  }
 
   const serviceFilter = document.getElementById('filter-service') as HTMLSelectElement | null;
   serviceFilter?.addEventListener('change', () => {
@@ -1057,6 +1078,55 @@ function bindPricingTabEvents(
   });
 }
 
+const ALL_DAY_HALF_HOUR_SLOTS = [
+  '07:00',
+  '07:30',
+  '08:00',
+  '08:30',
+  '09:00',
+  '09:30',
+  '10:00',
+  '10:30',
+  '11:00',
+  '11:30',
+  '12:00',
+  '12:30',
+  '13:00',
+  '13:30',
+  '14:00',
+  '14:30',
+  '15:00',
+  '15:30',
+  '16:00',
+  '16:30',
+  '17:00',
+  '17:30',
+  '18:00',
+  '18:30',
+  '19:00',
+  '19:30',
+];
+
+function getRelativeDateISO(daysOffset: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + daysOffset);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function getNextWeekendDayISO(targetDay: 0 | 6): string {
+  const d = new Date();
+  while (d.getDay() !== targetDay) {
+    d.setDate(d.getDate() + 1);
+  }
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 // ─── PESTAÑA 3: HORARIOS DISPONIBLES, CUPOS POR HORA Y BLOQUEOS ─────────────
 
 function renderScheduleTab(
@@ -1065,34 +1135,44 @@ function renderScheduleTab(
   state: AdminState
 ): string {
   const inspectDate = state.scheduleInspectDate || getTodayISO();
-  const isDateBlocked = config.schedule.blockedDates.includes(inspectDate);
-  const blockedSlotsForDate = config.schedule.blockedSlots[inspectDate] || [];
+  const cleanInspectDate = parseSheetDate(inspectDate);
+  const isDateBlocked = config.schedule.blockedDates.includes(cleanInspectDate);
+  const blockedSlotsForDate = (config.schedule.blockedSlots[cleanInspectDate] || []).map(parseSheetTime);
 
-  const dt = new Date(`${inspectDate}T12:00:00`);
+  const dt = new Date(`${cleanInspectDate}T12:00:00`);
+  const dayNum = dt.getDay();
   const isWeekendOrHoliday =
-    dt.getDay() === 0 || dt.getDay() === 6 || config.schedule.holidays.includes(inspectDate);
-  const hoursForInspectDate = isWeekendOrHoliday
-    ? config.schedule.weekendHolidayHours
-    : config.schedule.weekdayHours;
+    dayNum === 0 || dayNum === 6 || config.schedule.holidays.includes(cleanInspectDate);
+  const hoursForInspectDate = (
+    isWeekendOrHoliday ? config.schedule.weekendHolidayHours : config.schedule.weekdayHours
+  ).map(parseSheetTime);
+
+  const activeWeekdayHours = new Set(config.schedule.weekdayHours.map(parseSheetTime));
+  const activeWeekendHours = new Set(config.schedule.weekendHolidayHours.map(parseSheetTime));
+
+  const todayISO = getTodayISO();
+  const tomorrowISO = getRelativeDateISO(1);
+  const saturdayISO = getNextWeekendDayISO(6);
+  const sundayISO = getNextWeekendDayISO(0);
 
   return `
     <div class="space-y-8">
-      <!-- 1. Configuración General de Horarios y Cupos por Hora -->
-      <section class="x-card p-6 sm:p-8 space-y-6">
-        <div>
-          <span class="x-badge-solid">CAPACIDAD Y BLOQUES HORARIOS</span>
+      <!-- 1. Configuración General de Horarios y Cupos con Botones Interactivos -->
+      <section class="x-card p-6 sm:p-8 space-y-7">
+        <div class="border-b border-white/10 pb-4">
+          <span class="x-badge-solid">CAPACIDAD Y HORARIOS BASE (CADA 30 MIN)</span>
           <h2 class="font-title text-2xl font-extrabold uppercase italic text-white mt-1">
-            CUPOS POR HORA Y HORARIOS DE ATENCIÓN
+            CUPOS Y HORARIOS DE ATENCIÓN (SELECCIÓN POR BOTONES)
           </h2>
           <p class="text-xs text-white/60">
-            Define cuántas motos/cupos se pueden reservar por hora y los bloques horarios de entre semana y fines de semana/festivos.
+            Los turnos operan en bloques de 30 minutos. Haz clic sobre cada botón para activar o desactivar horas; ya no es necesario escribir nada a mano.
           </p>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div class="rounded-xl border border-lime-electric/40 bg-carbon/90 p-4">
             <label for="sched-capacity" class="x-label text-lime-electric">
-              Cupos / Motos Disponibles por Hora
+              Cupos / Motos Disponibles por Turno (30 min)
             </label>
             <input
               type="number"
@@ -1103,50 +1183,172 @@ function renderScheduleTab(
               class="x-input font-title text-2xl font-extrabold text-lime-electric"
             />
             <p class="text-[11px] text-white/60 mt-1">
-              Cuando se completen estos cupos en una misma hora, esa hora quedará marcada como APARTADA/AGOTADA.
+              Capacidad máxima de motos en pista simultáneamente por bloque horario de 30 min.
             </p>
           </div>
 
           <div class="rounded-xl border border-white/15 bg-carbon/90 p-4">
-            <label for="sched-weekday-label" class="x-label">Texto Visible Martes a Viernes</label>
+            <label for="sched-weekday-label" class="x-label">Etiqueta Horario Martes a Viernes</label>
             <input
               type="text"
               id="sched-weekday-label"
               value="${escapeHtml(config.schedule.weekdayScheduleLabel)}"
               class="x-input text-sm"
             />
-            <label for="sched-weekday-hours" class="x-label mt-3">
-              Horas Martes a Viernes (formato 24h separadas por coma)
-            </label>
-            <input
-              type="text"
-              id="sched-weekday-hours"
-              value="${escapeHtml(config.schedule.weekdayHours.join(', '))}"
-              class="x-input text-sm font-mono"
-            />
+            <p class="text-[11px] text-white/50 mt-1">Texto informativo visible en la web para entre semana.</p>
           </div>
 
           <div class="rounded-xl border border-white/15 bg-carbon/90 p-4">
-            <label for="sched-weekend-label" class="x-label">Texto Visible Sáb, Dom y Festivos</label>
+            <label for="sched-weekend-label" class="x-label">Etiqueta Sáb, Dom y Festivos</label>
             <input
               type="text"
               id="sched-weekend-label"
               value="${escapeHtml(config.schedule.weekendScheduleLabel)}"
               class="x-input text-sm"
             />
-            <label for="sched-weekend-hours" class="x-label mt-3">
-              Horas Sáb, Dom y Festivos (separadas por coma)
-            </label>
-            <input
-              type="text"
-              id="sched-weekend-hours"
-              value="${escapeHtml(config.schedule.weekendHolidayHours.join(', '))}"
-              class="x-input text-sm font-mono"
-            />
+            <p class="text-[11px] text-white/50 mt-1">Texto informativo visible en la web para fines de semana.</p>
           </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
+        <!-- SELECTOR CON BOTONES: Martes a Viernes -->
+        <div class="rounded-2xl border border-white/15 bg-carbon/80 p-5 space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="x-badge">ENTRE SEMANA</span>
+                <h3 class="font-title text-base sm:text-lg font-extrabold uppercase text-white">
+                  Horas Activas Martes a Viernes
+                </h3>
+              </div>
+              <p class="text-xs text-white/60 mt-0.5">
+                ${activeWeekdayHours.size} bloque(s) habilitados para reservas de entre semana.
+              </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+              <button
+                type="button"
+                id="quick-weekday-official-btn"
+                class="rounded-lg border border-lime-electric/40 bg-lime-electric/15 px-2.5 py-1.5 font-subtitle font-semibold text-lime-electric hover:bg-lime-electric hover:text-carbon transition-colors"
+              >
+                ⚡ 8:00 a 17:00 (Oficial)
+              </button>
+              <button
+                type="button"
+                id="quick-weekday-morning-btn"
+                class="rounded-lg border border-white/20 bg-graphite/60 px-2.5 py-1.5 font-subtitle font-semibold text-white/80 hover:text-white hover:border-lime-electric transition-colors"
+              >
+                Mañana (8:00–12:30)
+              </button>
+              <button
+                type="button"
+                id="quick-weekday-afternoon-btn"
+                class="rounded-lg border border-white/20 bg-graphite/60 px-2.5 py-1.5 font-subtitle font-semibold text-white/80 hover:text-white hover:border-lime-electric transition-colors"
+              >
+                Tarde (13:00–17:00)
+              </button>
+              <button
+                type="button"
+                id="quick-weekday-clear-btn"
+                class="rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 font-subtitle font-semibold text-red-300 hover:bg-red-500 hover:text-white transition-colors"
+              >
+                ✕ Limpiar
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-9 gap-2" id="weekday-slots-container">
+            ${ALL_DAY_HALF_HOUR_SLOTS.map((slot) => {
+              const isActive = activeWeekdayHours.has(slot);
+              return `
+                <button
+                  type="button"
+                  data-weekday-slot="${slot}"
+                  class="weekday-slot-toggle-btn rounded-xl border py-2.5 px-2 text-center transition-all ${
+                    isActive
+                      ? 'border-2 border-lime-electric bg-lime-electric text-carbon font-extrabold shadow-lime-glow'
+                      : 'border-white/10 bg-carbon text-white/50 hover:border-white/30 hover:text-white'
+                  }"
+                >
+                  <span class="block font-title text-sm font-extrabold leading-tight">${formatTime12h(slot)}</span>
+                  <span class="block text-[10px] font-subtitle uppercase mt-0.5 ${isActive ? 'text-carbon/80' : 'text-white/40'}">
+                    ${isActive ? '✓ Activa' : 'Inactiva'}
+                  </span>
+                </button>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
+        <!-- SELECTOR CON BOTONES: Sábados, Domingos y Festivos -->
+        <div class="rounded-2xl border border-white/15 bg-carbon/80 p-5 space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="x-badge text-lime-neon border-lime-neon/40">FIN DE SEMANA Y FESTIVOS</span>
+                <h3 class="font-title text-base sm:text-lg font-extrabold uppercase text-white">
+                  Horas Activas Sáb, Dom y Festivos
+                </h3>
+              </div>
+              <p class="text-xs text-white/60 mt-0.5">
+                ${activeWeekendHours.size} bloque(s) habilitados para reservas de fin de semana.
+              </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+              <button
+                type="button"
+                id="quick-weekend-official-btn"
+                class="rounded-lg border border-lime-electric/40 bg-lime-electric/15 px-2.5 py-1.5 font-subtitle font-semibold text-lime-electric hover:bg-lime-electric hover:text-carbon transition-colors"
+              >
+                ⚡ 9:00 a 18:00 (Oficial)
+              </button>
+              <button
+                type="button"
+                id="quick-weekend-morning-btn"
+                class="rounded-lg border border-white/20 bg-graphite/60 px-2.5 py-1.5 font-subtitle font-semibold text-white/80 hover:text-white hover:border-lime-electric transition-colors"
+              >
+                Mañana (9:00–13:00)
+              </button>
+              <button
+                type="button"
+                id="quick-weekend-afternoon-btn"
+                class="rounded-lg border border-white/20 bg-graphite/60 px-2.5 py-1.5 font-subtitle font-semibold text-white/80 hover:text-white hover:border-lime-electric transition-colors"
+              >
+                Tarde (13:30–18:00)
+              </button>
+              <button
+                type="button"
+                id="quick-weekend-clear-btn"
+                class="rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 font-subtitle font-semibold text-red-300 hover:bg-red-500 hover:text-white transition-colors"
+              >
+                ✕ Limpiar
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-9 gap-2" id="weekend-slots-container">
+            ${ALL_DAY_HALF_HOUR_SLOTS.map((slot) => {
+              const isActive = activeWeekendHours.has(slot);
+              return `
+                <button
+                  type="button"
+                  data-weekend-slot="${slot}"
+                  class="weekend-slot-toggle-btn rounded-xl border py-2.5 px-2 text-center transition-all ${
+                    isActive
+                      ? 'border-2 border-lime-electric bg-lime-electric text-carbon font-extrabold shadow-lime-glow'
+                      : 'border-white/10 bg-carbon text-white/50 hover:border-white/30 hover:text-white'
+                  }"
+                >
+                  <span class="block font-title text-sm font-extrabold leading-tight">${formatTime12h(slot)}</span>
+                  <span class="block text-[10px] font-subtitle uppercase mt-0.5 ${isActive ? 'text-carbon/80' : 'text-white/40'}">
+                    ${isActive ? '✓ Activa' : 'Inactiva'}
+                  </span>
+                </button>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5 pt-1">
           <div class="rounded-xl border border-white/15 bg-carbon/90 p-4 space-y-2">
             <label for="sched-holidays" class="x-label">
               Fechas Festivas (YYYY-MM-DD separadas por coma)
@@ -1171,39 +1373,60 @@ function renderScheduleTab(
           </div>
         </div>
 
-        <div class="flex justify-end">
+        <div class="flex justify-end pt-2">
           <button type="button" id="save-schedule-btn" class="btn-x-primary py-3.5 px-8 text-sm">
             GUARDAR HORARIOS Y CAPACIDAD
           </button>
         </div>
       </section>
 
-      <!-- 2. Control Interactivo de Horas por Día Específico -->
-      <section class="x-card p-6 sm:p-8 space-y-5">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
-          <div>
-            <span class="x-badge">CONTROL EN VIVO POR FECHA</span>
-            <h3 class="font-title text-xl font-extrabold uppercase italic text-white mt-1">
+      <!-- 2. Control Interactivo de Horas por Día Específico (Sin escribir fecha a mano) -->
+      <section class="x-card p-6 sm:p-8 space-y-6">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-white/10 pb-5">
+          <div class="space-y-1">
+            <div class="flex items-center gap-2">
+              <span class="x-badge">CONTROL EN VIVO POR DÍA</span>
+              <span class="text-xs font-subtitle text-lime-electric uppercase">
+                ${isWeekendOrHoliday ? 'Horario Fin de Semana / Festivo' : 'Horario Entre Semana'}
+              </span>
+            </div>
+            <h3 class="font-title text-xl sm:text-2xl font-extrabold uppercase italic text-white">
               BLOQUEAR O HABILITAR HORAS EN UN DÍA ESPECÍFICO
             </h3>
             <p class="text-xs text-white/60">
-              Selecciona una fecha y haz clic sobre cualquier hora para bloquearla o desbloquearla manualmente.
+              Haz clic en cualquier hora para bloquearla (por lluvia, mantenimiento o pista ocupada). Se actualiza al instante.
             </p>
           </div>
-          <div class="flex items-center gap-3">
-            <input
-              type="date"
-              id="inspect-date-picker"
-              value="${inspectDate}"
-              class="x-input text-sm font-semibold"
-            />
+
+          <!-- Selector de Fecha con Calendario Gráfico Interactivo (Sin escribir a mano) -->
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+            <div class="relative flex items-center">
+              <input
+                type="date"
+                id="inspect-date-picker"
+                value="${cleanInspectDate}"
+                class="x-input text-sm font-semibold cursor-pointer select-none pr-10"
+                style="caret-color: transparent;"
+                tabindex="0"
+                title="Haz clic para abrir el calendario"
+              />
+              <button
+                type="button"
+                id="open-inspect-calendar-btn"
+                class="absolute right-2.5 p-1 text-lime-electric hover:text-white"
+                title="Abrir calendario"
+                aria-label="Abrir calendario para elegir fecha"
+              >
+                📅
+              </button>
+            </div>
             <button
               type="button"
               id="toggle-entire-date-btn"
-              class="rounded-xl border px-4 py-3 font-subtitle text-xs font-semibold uppercase whitespace-nowrap ${
+              class="rounded-xl border px-4 py-2.5 font-subtitle text-xs font-semibold uppercase whitespace-nowrap transition-colors ${
                 isDateBlocked
-                  ? 'border-lime-electric bg-lime-electric/20 text-lime-electric'
-                  : 'border-red-500/40 bg-red-500/15 text-red-300'
+                  ? 'border-lime-electric bg-lime-electric/20 text-lime-electric hover:bg-lime-electric hover:text-carbon'
+                  : 'border-red-500/40 bg-red-500/15 text-red-300 hover:bg-red-500 hover:text-white'
               }"
             >
               ${isDateBlocked ? '✓ Reabrir Fecha Completa' : '✕ Cerrar Fecha Completa'}
@@ -1211,17 +1434,101 @@ function renderScheduleTab(
           </div>
         </div>
 
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+        <!-- Atajos Rápidos de Fecha -->
+        <div class="flex flex-wrap items-center justify-between gap-3 bg-graphite/40 rounded-xl p-3 border border-white/10">
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            <span class="font-subtitle text-white/60 uppercase text-[11px]">Ir rápido a:</span>
+            <button
+              type="button"
+              data-inspect-jump="${todayISO}"
+              class="inspect-jump-btn rounded-lg border border-white/15 bg-carbon px-2.5 py-1 font-subtitle text-xs font-semibold ${
+                cleanInspectDate === todayISO ? 'border-lime-electric text-lime-electric' : 'text-white/80 hover:text-white'
+              }"
+            >
+              Hoy (${todayISO.slice(5)})
+            </button>
+            <button
+              type="button"
+              data-inspect-jump="${tomorrowISO}"
+              class="inspect-jump-btn rounded-lg border border-white/15 bg-carbon px-2.5 py-1 font-subtitle text-xs font-semibold ${
+                cleanInspectDate === tomorrowISO ? 'border-lime-electric text-lime-electric' : 'text-white/80 hover:text-white'
+              }"
+            >
+              Mañana (${tomorrowISO.slice(5)})
+            </button>
+            <button
+              type="button"
+              data-inspect-jump="${saturdayISO}"
+              class="inspect-jump-btn rounded-lg border border-white/15 bg-carbon px-2.5 py-1 font-subtitle text-xs font-semibold ${
+                cleanInspectDate === saturdayISO ? 'border-lime-electric text-lime-electric' : 'text-white/80 hover:text-white'
+              }"
+            >
+              Sábado (${saturdayISO.slice(5)})
+            </button>
+            <button
+              type="button"
+              data-inspect-jump="${sundayISO}"
+              class="inspect-jump-btn rounded-lg border border-white/15 bg-carbon px-2.5 py-1 font-subtitle text-xs font-semibold ${
+                cleanInspectDate === sundayISO ? 'border-lime-electric text-lime-electric' : 'text-white/80 hover:text-white'
+              }"
+            >
+              Domingo (${sundayISO.slice(5)})
+            </button>
+          </div>
+
+          <!-- Acciones Masivas para el Día -->
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            <button
+              type="button"
+              id="block-morning-btn"
+              class="rounded-lg border border-amber-400/40 bg-amber-500/10 px-2.5 py-1 font-subtitle text-xs font-semibold text-amber-300 hover:bg-amber-500 hover:text-carbon transition-colors"
+            >
+              🔒 Bloquear Mañana (&lt;13:00)
+            </button>
+            <button
+              type="button"
+              id="block-afternoon-btn"
+              class="rounded-lg border border-amber-400/40 bg-amber-500/10 px-2.5 py-1 font-subtitle text-xs font-semibold text-amber-300 hover:bg-amber-500 hover:text-carbon transition-colors"
+            >
+              🔒 Bloquear Tarde (≥13:00)
+            </button>
+            <button
+              type="button"
+              id="unblock-all-day-btn"
+              class="rounded-lg border border-lime-electric/40 bg-lime-electric/15 px-2.5 py-1 font-subtitle text-xs font-semibold text-lime-electric hover:bg-lime-electric hover:text-carbon transition-colors"
+            >
+              ✓ Habilitar Todo el Día
+            </button>
+          </div>
+        </div>
+
+        ${
+          isDateBlocked
+            ? `
+          <div class="rounded-2xl border-2 border-red-500/50 bg-red-500/10 p-5 text-center space-y-1">
+            <span class="font-title text-lg font-extrabold uppercase text-red-300">
+              ⚠️ Esta fecha completa (${cleanInspectDate}) está marcada como CERRADA
+            </span>
+            <p class="text-xs text-white/80">
+              Ningún cliente puede reservar en este día. Para habilitar horas individuales, reabre la fecha completa arriba.
+            </p>
+          </div>
+        `
+            : ''
+        }
+
+        <!-- Grilla de Bloques de 30 minutos del día -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
           ${hoursForInspectDate
             .map((hour) => {
               const isSlotBlocked = isDateBlocked || blockedSlotsForDate.includes(hour);
               const bookedInSlot = bookings
                 .filter(
                   (b) =>
-                    parseSheetDate(b.date) === inspectDate &&
+                    parseSheetDate(b.date) === cleanInspectDate &&
                     b.status !== 'cancelada' &&
                     b.serviceType === 'pitbike' &&
-                    b.timeSlot === hour
+                    parseSheetTime(b.timeSlot) === hour
                 )
                 .reduce((s, b) => s + (Number(b.quantity) || 1), 0);
 
@@ -1229,24 +1536,28 @@ function renderScheduleTab(
                 <button
                   type="button"
                   data-toggle-slot="${hour}"
-                  class="toggle-slot-btn rounded-xl border p-4 text-left transition-all ${
+                  class="toggle-slot-btn rounded-xl border p-3.5 text-left transition-all relative ${
                     isSlotBlocked
-                      ? 'border-red-500/40 bg-red-500/15 text-red-200'
-                      : 'border-lime-electric/40 bg-carbon/90 text-white hover:border-lime-electric'
+                      ? 'border-red-500/50 bg-red-500/15 text-red-200 hover:border-red-400'
+                      : 'border-lime-electric/40 bg-carbon/90 text-white hover:border-lime-electric shadow-sm'
                   }"
                 >
                   <div class="flex items-center justify-between">
-                    <span class="font-title text-lg font-extrabold">${formatTime12h(hour)}</span>
-                    <span class="text-[10px] font-subtitle font-semibold uppercase px-2 py-0.5 rounded ${
+                    <span class="font-title text-base font-extrabold ${isSlotBlocked ? 'text-red-300' : 'text-white'}">
+                      ${formatTime12h(hour)}
+                    </span>
+                    <span class="text-[10px] font-subtitle font-bold uppercase px-1.5 py-0.5 rounded ${
                       isSlotBlocked ? 'bg-red-500/30 text-red-200' : 'bg-lime-electric/20 text-lime-electric'
                     }">
-                      ${isSlotBlocked ? 'Bloqueado' : 'Activo'}
+                      ${isSlotBlocked ? '🔒 Bloqueado' : '🟢 Activo'}
                     </span>
                   </div>
                   <p class="text-xs text-white/70 mt-1.5">
-                    Reservas activas: <strong>${bookedInSlot} / ${config.schedule.pitBikeCapacityPerHour}</strong>
+                    Reservas: <strong>${bookedInSlot} / ${config.schedule.pitBikeCapacityPerHour}</strong>
                   </p>
-                  <p class="text-[10px] text-white/50 mt-1">Clic para ${isSlotBlocked ? 'habilitar' : 'bloquear'}</p>
+                  <p class="text-[10px] font-subtitle text-white/45 mt-1">
+                    Clic para ${isSlotBlocked ? 'habilitar' : 'bloquear'}
+                  </p>
                 </button>
               `;
             })
@@ -1271,6 +1582,132 @@ function bindScheduleTabEvents(
       .map((s) => s.trim())
       .filter(Boolean);
 
+  const currentWeekdaySlots = new Set<string>(config.schedule.weekdayHours.map(parseSheetTime));
+  const currentWeekendSlots = new Set<string>(config.schedule.weekendHolidayHours.map(parseSheetTime));
+
+  const updateWeekdayUI = () => {
+    app.querySelectorAll<HTMLButtonElement>('.weekday-slot-toggle-btn').forEach((btn) => {
+      const slot = btn.getAttribute('data-weekday-slot') || '';
+      const isActive = currentWeekdaySlots.has(slot);
+      btn.className = `weekday-slot-toggle-btn rounded-xl border py-2.5 px-2 text-center transition-all ${
+        isActive
+          ? 'border-2 border-lime-electric bg-lime-electric text-carbon font-extrabold shadow-lime-glow'
+          : 'border-white/10 bg-carbon text-white/50 hover:border-white/30 hover:text-white'
+      }`;
+      const subtitle = btn.querySelector('span:nth-child(2)');
+      if (subtitle) {
+        subtitle.className = `block text-[10px] font-subtitle uppercase mt-0.5 ${
+          isActive ? 'text-carbon/80' : 'text-white/40'
+        }`;
+        subtitle.textContent = isActive ? '✓ Activa' : 'Inactiva';
+      }
+    });
+  };
+
+  const updateWeekendUI = () => {
+    app.querySelectorAll<HTMLButtonElement>('.weekend-slot-toggle-btn').forEach((btn) => {
+      const slot = btn.getAttribute('data-weekend-slot') || '';
+      const isActive = currentWeekendSlots.has(slot);
+      btn.className = `weekend-slot-toggle-btn rounded-xl border py-2.5 px-2 text-center transition-all ${
+        isActive
+          ? 'border-2 border-lime-electric bg-lime-electric text-carbon font-extrabold shadow-lime-glow'
+          : 'border-white/10 bg-carbon text-white/50 hover:border-white/30 hover:text-white'
+      }`;
+      const subtitle = btn.querySelector('span:nth-child(2)');
+      if (subtitle) {
+        subtitle.className = `block text-[10px] font-subtitle uppercase mt-0.5 ${
+          isActive ? 'text-carbon/80' : 'text-white/40'
+        }`;
+        subtitle.textContent = isActive ? '✓ Activa' : 'Inactiva';
+      }
+    });
+  };
+
+  // Toggle individual en botones de Martes a Viernes
+  app.querySelectorAll<HTMLButtonElement>('.weekday-slot-toggle-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const slot = btn.getAttribute('data-weekday-slot');
+      if (!slot) return;
+      if (currentWeekdaySlots.has(slot)) {
+        currentWeekdaySlots.delete(slot);
+      } else {
+        currentWeekdaySlots.add(slot);
+      }
+      updateWeekdayUI();
+    });
+  });
+
+  // Atajos rápidos para Martes a Viernes
+  document.getElementById('quick-weekday-official-btn')?.addEventListener('click', () => {
+    currentWeekdaySlots.clear();
+    ALL_DAY_HALF_HOUR_SLOTS.forEach((s) => {
+      if (s >= '08:00' && s <= '16:30') currentWeekdaySlots.add(s);
+    });
+    updateWeekdayUI();
+  });
+
+  document.getElementById('quick-weekday-morning-btn')?.addEventListener('click', () => {
+    ALL_DAY_HALF_HOUR_SLOTS.forEach((s) => {
+      if (s >= '08:00' && s <= '12:30') currentWeekdaySlots.add(s);
+    });
+    updateWeekdayUI();
+  });
+
+  document.getElementById('quick-weekday-afternoon-btn')?.addEventListener('click', () => {
+    ALL_DAY_HALF_HOUR_SLOTS.forEach((s) => {
+      if (s >= '13:00' && s <= '16:30') currentWeekdaySlots.add(s);
+    });
+    updateWeekdayUI();
+  });
+
+  document.getElementById('quick-weekday-clear-btn')?.addEventListener('click', () => {
+    currentWeekdaySlots.clear();
+    updateWeekdayUI();
+  });
+
+  // Toggle individual en botones de Fin de Semana
+  app.querySelectorAll<HTMLButtonElement>('.weekend-slot-toggle-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const slot = btn.getAttribute('data-weekend-slot');
+      if (!slot) return;
+      if (currentWeekendSlots.has(slot)) {
+        currentWeekendSlots.delete(slot);
+      } else {
+        currentWeekendSlots.add(slot);
+      }
+      updateWeekendUI();
+    });
+  });
+
+  // Atajos rápidos para Fin de Semana
+  document.getElementById('quick-weekend-official-btn')?.addEventListener('click', () => {
+    currentWeekendSlots.clear();
+    ALL_DAY_HALF_HOUR_SLOTS.forEach((s) => {
+      if (s >= '09:00' && s <= '17:30') currentWeekendSlots.add(s);
+    });
+    updateWeekendUI();
+  });
+
+  document.getElementById('quick-weekend-morning-btn')?.addEventListener('click', () => {
+    ALL_DAY_HALF_HOUR_SLOTS.forEach((s) => {
+      if (s >= '09:00' && s <= '13:00') currentWeekendSlots.add(s);
+    });
+    updateWeekendUI();
+  });
+
+  document.getElementById('quick-weekend-afternoon-btn')?.addEventListener('click', () => {
+    ALL_DAY_HALF_HOUR_SLOTS.forEach((s) => {
+      if (s >= '13:30' && s <= '17:30') currentWeekendSlots.add(s);
+    });
+    updateWeekendUI();
+  });
+
+  document.getElementById('quick-weekend-clear-btn')?.addEventListener('click', () => {
+    currentWeekendSlots.clear();
+    updateWeekendUI();
+  });
+
+  // Guardar Horarios y Capacidad
   document.getElementById('save-schedule-btn')?.addEventListener('click', async () => {
     const capacity = Number((document.getElementById('sched-capacity') as HTMLInputElement)?.value) || 5;
     const weekdayScheduleLabel =
@@ -1279,12 +1716,6 @@ function bindScheduleTabEvents(
     const weekendScheduleLabel =
       (document.getElementById('sched-weekend-label') as HTMLInputElement)?.value.trim() ||
       '9:00 a. m. – 6:00 p. m.';
-    const weekdayHours = parseList(
-      (document.getElementById('sched-weekday-hours') as HTMLInputElement)?.value || ''
-    );
-    const weekendHolidayHours = parseList(
-      (document.getElementById('sched-weekend-hours') as HTMLInputElement)?.value || ''
-    );
     const holidays = parseList(
       (document.getElementById('sched-holidays') as HTMLTextAreaElement)?.value || ''
     );
@@ -1294,6 +1725,18 @@ function bindScheduleTabEvents(
     const mondayOpen =
       (document.getElementById('sched-monday-open') as HTMLInputElement)?.checked ?? false;
 
+    const weekdayHours = Array.from(currentWeekdaySlots).sort();
+    const weekendHolidayHours = Array.from(currentWeekendSlots).sort();
+
+    if (weekdayHours.length === 0 || weekendHolidayHours.length === 0) {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Horarios incompletos',
+        text: 'Debes habilitar al menos un bloque horario tanto para entre semana como para fines de semana.',
+      });
+      return;
+    }
+
     await onSave({
       ...config,
       schedule: {
@@ -1301,10 +1744,8 @@ function bindScheduleTabEvents(
         pitBikeCapacityPerHour: Math.max(1, capacity),
         weekdayScheduleLabel,
         weekendScheduleLabel,
-        weekdayHours: weekdayHours.length ? weekdayHours : config.schedule.weekdayHours,
-        weekendHolidayHours: weekendHolidayHours.length
-          ? weekendHolidayHours
-          : config.schedule.weekendHolidayHours,
+        weekdayHours,
+        weekendHolidayHours,
         holidays,
         blockedDates,
         mondayOpen,
@@ -1312,50 +1753,227 @@ function bindScheduleTabEvents(
     });
   });
 
+  // ─── Control en Vivo por Fecha (Sin escribir fecha a mano) ──────────────────
   const inspectPicker = document.getElementById('inspect-date-picker') as HTMLInputElement | null;
-  inspectPicker?.addEventListener('change', () => {
-    if (inspectPicker.value) {
-      state.scheduleInspectDate = parseSheetDate(inspectPicker.value);
-      rerender();
-    }
+  const openInspectCalBtn = document.getElementById('open-inspect-calendar-btn');
+
+  if (inspectPicker) {
+    // Evitar tecleo manual de fecha
+    inspectPicker.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab' && e.key !== 'Escape') {
+        e.preventDefault();
+        try {
+          inspectPicker.showPicker();
+        } catch {}
+      }
+    });
+
+    inspectPicker.addEventListener('click', () => {
+      try {
+        inspectPicker.showPicker();
+      } catch {}
+    });
+
+    inspectPicker.addEventListener('change', () => {
+      if (inspectPicker.value) {
+        state.scheduleInspectDate = parseSheetDate(inspectPicker.value);
+        rerender();
+      }
+    });
+  }
+
+  if (openInspectCalBtn && inspectPicker) {
+    openInspectCalBtn.addEventListener('click', () => {
+      try {
+        inspectPicker.showPicker();
+      } catch {}
+    });
+  }
+
+  // Saltos rápidos de fecha
+  app.querySelectorAll<HTMLButtonElement>('.inspect-jump-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const iso = btn.getAttribute('data-inspect-jump');
+      if (iso) {
+        state.scheduleInspectDate = parseSheetDate(iso);
+        rerender();
+      }
+    });
   });
 
+  // Cerrar / Reabrir fecha completa
   document.getElementById('toggle-entire-date-btn')?.addEventListener('click', async () => {
-    const d = state.scheduleInspectDate;
-    const currentBlocked = new Set(config.schedule.blockedDates);
-    if (currentBlocked.has(d)) {
+    const d = parseSheetDate(state.scheduleInspectDate || getTodayISO());
+    const currentBlocked = new Set(config.schedule.blockedDates.map(parseSheetDate));
+    const wasBlocked = currentBlocked.has(d);
+    if (wasBlocked) {
       currentBlocked.delete(d);
     } else {
       currentBlocked.add(d);
     }
-    await onSave({
+
+    const nextConfig: ParkConfig = {
       ...config,
       schedule: {
         ...config.schedule,
         blockedDates: Array.from(currentBlocked),
       },
+    };
+
+    config.schedule.blockedDates = nextConfig.schedule.blockedDates;
+    rerender();
+
+    void saveParkConfig(nextConfig).then(() => {
+      void Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: wasBlocked ? 'success' : 'info',
+        title: wasBlocked ? `Fecha ${d} reabierta` : `Fecha ${d} cerrada completa`,
+        showConfirmButton: false,
+        timer: 1800,
+      });
     });
   });
 
+  // Bloquear mañana (< 13:00) para el día inspeccionado
+  document.getElementById('block-morning-btn')?.addEventListener('click', async () => {
+    const d = parseSheetDate(state.scheduleInspectDate || getTodayISO());
+    const map: Record<string, string[]> = { ...config.schedule.blockedSlots };
+    const currentSet = new Set<string>((map[d] || []).map((s) => parseSheetTime(s)));
+    ALL_DAY_HALF_HOUR_SLOTS.forEach((s) => {
+      if (s < '13:00') currentSet.add(s);
+    });
+    map[d] = Array.from(currentSet);
+    config.schedule.blockedSlots = map;
+    rerender();
+
+    void saveParkConfig({
+      ...config,
+      schedule: { ...config.schedule, blockedSlots: map },
+    }).then(() => {
+      void Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'success',
+        title: `Mañana bloqueada para el ${d}`,
+        showConfirmButton: false,
+        timer: 1500,
+      });
+    });
+  });
+
+  // Bloquear tarde (>= 13:00) para el día inspeccionado
+  document.getElementById('block-afternoon-btn')?.addEventListener('click', async () => {
+    const d = parseSheetDate(state.scheduleInspectDate || getTodayISO());
+    const map: Record<string, string[]> = { ...config.schedule.blockedSlots };
+    const currentSet = new Set<string>((map[d] || []).map((s) => parseSheetTime(s)));
+    ALL_DAY_HALF_HOUR_SLOTS.forEach((s) => {
+      if (s >= '13:00') currentSet.add(s);
+    });
+    map[d] = Array.from(currentSet);
+    config.schedule.blockedSlots = map;
+    rerender();
+
+    void saveParkConfig({
+      ...config,
+      schedule: { ...config.schedule, blockedSlots: map },
+    }).then(() => {
+      void Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'success',
+        title: `Tarde bloqueada para el ${d}`,
+        showConfirmButton: false,
+        timer: 1500,
+      });
+    });
+  });
+
+  // Habilitar todas las horas para el día inspeccionado
+  document.getElementById('unblock-all-day-btn')?.addEventListener('click', async () => {
+    const d = parseSheetDate(state.scheduleInspectDate || getTodayISO());
+    const map: Record<string, string[]> = { ...config.schedule.blockedSlots };
+    map[d] = [];
+    config.schedule.blockedSlots = map;
+    rerender();
+
+    void saveParkConfig({
+      ...config,
+      schedule: { ...config.schedule, blockedSlots: map },
+    }).then(() => {
+      void Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'success',
+        title: `Todas las horas habilitadas para el ${d}`,
+        showConfirmButton: false,
+        timer: 1500,
+      });
+    });
+  });
+
+  // Toggle individual por hora (rápido, sin modal invasivo)
   app.querySelectorAll<HTMLButtonElement>('.toggle-slot-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const slot = btn.getAttribute('data-toggle-slot');
-      if (!slot) return;
-      const d = state.scheduleInspectDate;
-      const map = { ...config.schedule.blockedSlots };
-      const set = new Set(map[d] || []);
+      const rawSlot = btn.getAttribute('data-toggle-slot');
+      if (!rawSlot) return;
+      const slot = parseSheetTime(rawSlot);
+      const d = parseSheetDate(state.scheduleInspectDate || getTodayISO());
+
+      const map: Record<string, string[]> = { ...config.schedule.blockedSlots };
+      const currentList = (map[d] || []).map((s) => parseSheetTime(s));
+      const set = new Set<string>(currentList);
+      let isNowBlocked = false;
+
       if (set.has(slot)) {
         set.delete(slot);
+        isNowBlocked = false;
       } else {
         set.add(slot);
+        isNowBlocked = true;
       }
+
       map[d] = Array.from(set);
-      await onSave({
+      config.schedule.blockedSlots = map;
+
+      // Actualización visual inmediata de este botón
+      btn.className = `toggle-slot-btn rounded-xl border p-3.5 text-left transition-all relative ${
+        isNowBlocked
+          ? 'border-red-500/50 bg-red-500/15 text-red-200 hover:border-red-400'
+          : 'border-lime-electric/40 bg-carbon/90 text-white hover:border-lime-electric shadow-sm'
+      }`;
+      const hourSpan = btn.querySelector('span:nth-child(1)');
+      if (hourSpan) {
+        hourSpan.className = `font-title text-base font-extrabold ${isNowBlocked ? 'text-red-300' : 'text-white'}`;
+      }
+      const badgeSpan = btn.querySelector('span:nth-child(2)');
+      if (badgeSpan) {
+        badgeSpan.className = `text-[10px] font-subtitle font-bold uppercase px-1.5 py-0.5 rounded ${
+          isNowBlocked ? 'bg-red-500/30 text-red-200' : 'bg-lime-electric/20 text-lime-electric'
+        }`;
+        badgeSpan.textContent = isNowBlocked ? '🔒 Bloqueado' : '🟢 Activo';
+      }
+      const actionHint = btn.querySelector('p:nth-child(3)');
+      if (actionHint) {
+        actionHint.textContent = `Clic para ${isNowBlocked ? 'habilitar' : 'bloquear'}`;
+      }
+
+      // Guardar en background sin bloquear la interfaz
+      void saveParkConfig({
         ...config,
         schedule: {
           ...config.schedule,
           blockedSlots: map,
         },
+      }).then(() => {
+        void Swal.fire({
+          toast: true,
+          position: 'top-end',
+          icon: isNowBlocked ? 'info' : 'success',
+          title: `${formatTime12h(slot)}: ${isNowBlocked ? 'Bloqueado' : 'Habilitado'}`,
+          showConfirmButton: false,
+          timer: 1200,
+        });
       });
     });
   });
