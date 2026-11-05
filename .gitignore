@@ -1,0 +1,24 @@
+# Dependencias (nunca subir al repo)
+node_modules/
+**/node_modules/
+
+# Build (se genera con npm run build)
+dist/
+**/dist/
+
+# Sistema y entorno
+.DS_Store
+Thumbs.db
+*.local
+.env
+.env.*
+
+# Logs y cache
+npm-debug.log*
+*.log
+.cache/
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp

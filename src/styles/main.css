@@ -1,0 +1,233 @@
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,700;0,800;0,900;1,800;1,900&family=Inter:wght@400;500;600;700&family=Montserrat:wght@500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-electric-lime: #B6FF00;
+  --color-racing-green: #8FCC00;
+  --color-neon-light: #D4FF66;
+  --color-carbon-black: #0B0B0B;
+  --color-graphite: #252525;
+  --color-pure-white: #FFFFFF;
+
+  --font-title: 'Exo 2', sans-serif;
+  --font-subtitle: 'Montserrat', sans-serif;
+  --font-body: 'Inter', sans-serif;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    background-color: #0B0B0B;
+    color: #FFFFFF;
+  }
+
+  body {
+    font-family: var(--font-body);
+    font-weight: 400;
+    background-color: #0B0B0B;
+    color: #FFFFFF;
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, .font-heading {
+    font-family: var(--font-title);
+    font-weight: 800;
+  }
+
+  h3, h4, .font-sub {
+    font-family: var(--font-subtitle);
+    font-weight: 600;
+  }
+}
+
+/* Native <dialog> modal scroll containment (per modern-web-guidance) */
+dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: rgba(5, 5, 5, 0.85);
+  backdrop-filter: blur(8px);
+}
+
+@layer components {
+  /* Botón principal de adrenalina con corte diagonal y destello Electric Lime */
+  .btn-x-primary {
+    @apply relative inline-flex items-center justify-center gap-2.5 px-7 py-3.5 font-title font-extrabold uppercase tracking-wider text-carbon transition-all duration-300 select-none;
+    background: linear-gradient(135deg, #B6FF00 0%, #8FCC00 100%);
+    clip-path: polygon(12px 0%, 100% 0%, calc(100% - 12px) 100%, 0% 100%);
+    box-shadow: 0 0 24px rgba(182, 255, 0, 0.35);
+  }
+
+  .btn-x-primary:hover {
+    background: linear-gradient(135deg, #D4FF66 0%, #B6FF00 100%);
+    box-shadow: 0 0 38px rgba(182, 255, 0, 0.65);
+    transform: translateY(-2px);
+  }
+
+  .btn-x-primary:active {
+    transform: translateY(0);
+  }
+
+  /* Botón secundario con borde Electric Lime y corte deportivo */
+  .btn-x-outline {
+    @apply relative inline-flex items-center justify-center gap-2.5 px-7 py-3.5 font-title font-extrabold uppercase tracking-wider text-lime-electric border-2 border-lime-electric/70 bg-carbon/80 transition-all duration-300 select-none;
+    clip-path: polygon(10px 0%, 100% 0%, calc(100% - 10px) 100%, 0% 100%);
+  }
+
+  .btn-x-outline:hover {
+    @apply bg-lime-electric text-carbon border-lime-electric;
+    box-shadow: 0 0 30px rgba(182, 255, 0, 0.45);
+    transform: translateY(-2px);
+  }
+
+  /* Tarjeta de telemetría / chasis en grafito y carbono */
+  .x-card {
+    @apply relative rounded-2xl border border-white/10 bg-graphite/60 backdrop-blur-md transition-all duration-300;
+    background-image: linear-gradient(145deg, rgba(37, 37, 37, 0.78) 0%, rgba(15, 15, 15, 0.92) 100%);
+  }
+
+  .x-card:hover {
+    @apply border-lime-electric/50;
+    box-shadow: 0 18px 40px -15px rgba(0, 0, 0, 0.9), 0 0 25px rgba(182, 255, 0, 0.12);
+  }
+
+  .x-card-featured {
+    @apply relative rounded-2xl border-2 border-lime-electric/70 bg-graphite/80 backdrop-blur-md transition-all duration-300;
+    background-image:
+      radial-gradient(circle at 90% 10%, rgba(182, 255, 0, 0.14) 0%, transparent 55%),
+      linear-gradient(145deg, rgba(37, 37, 37, 0.9) 0%, rgba(11, 11, 11, 0.96) 100%);
+    box-shadow: 0 20px 45px -15px rgba(0, 0, 0, 0.95), 0 0 30px rgba(182, 255, 0, 0.18);
+  }
+
+  /* Etiquetas tipo placa de carrera */
+  .x-badge {
+    @apply inline-flex items-center gap-2 px-3.5 py-1 font-subtitle text-xs font-semibold uppercase tracking-[0.16em] text-lime-electric border border-lime-electric/40 bg-lime-electric/10 rounded-full;
+  }
+
+  .x-badge-solid {
+    @apply inline-flex items-center gap-1.5 px-3 py-1 font-title text-xs font-extrabold uppercase tracking-wider text-carbon bg-lime-electric;
+    clip-path: polygon(6px 0%, 100% 0%, calc(100% - 6px) 100%, 0% 100%);
+  }
+
+  /* Campos de formulario accesibles (min-height 48px, font-size 1rem) */
+  .x-input {
+    @apply w-full rounded-xl border border-white/15 bg-carbon/90 px-4 py-3 text-base text-white placeholder-white/35 outline-none transition-all duration-200;
+    min-height: 48px;
+  }
+
+  .x-input:focus {
+    @apply border-lime-electric ring-2 ring-lime-electric/25;
+  }
+
+  .x-input:invalid:user-invalid {
+    @apply border-red-500 ring-2 ring-red-500/20;
+  }
+
+  .x-label {
+    @apply block font-subtitle text-xs font-semibold uppercase tracking-wider text-white/80 mb-1.5;
+  }
+}
+
+/* Textura de pista y telemetría de carbono */
+.bg-track-grid {
+  background-color: #0B0B0B;
+  background-image:
+    radial-gradient(circle at 18% 15%, rgba(182, 255, 0, 0.11) 0%, transparent 42%),
+    radial-gradient(circle at 85% 75%, rgba(143, 204, 0, 0.08) 0%, transparent 45%),
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 44px 44px, 44px 44px;
+}
+
+/* Franjas diagonales inspiradas en las 3 barras /// del logo Green X Park */
+.slash-stripes {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.slash-stripes span {
+  display: inline-block;
+  width: 6px;
+  height: 18px;
+  background-color: #B6FF00;
+  transform: skewX(-24deg);
+}
+
+.slash-stripes span:last-child {
+  background-color: #FFFFFF;
+}
+
+/* Botón flotante de WhatsApp para soporte en vivo */
+.whatsapp-float {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 45;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.75rem 1.15rem;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+  color: #FFFFFF;
+  font-family: var(--font-subtitle);
+  font-weight: 600;
+  font-size: 0.875rem;
+  box-shadow: 0 10px 30px rgba(37, 211, 102, 0.4), 0 0 0 2px rgba(255, 255, 255, 0.12);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.whatsapp-float:hover {
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 14px 36px rgba(37, 211, 102, 0.6), 0 0 0 2px rgba(182, 255, 0, 0.5);
+}
+
+/* SweetAlert2 Tema Personalizado GREEN X PARK */
+.swal2-popup {
+  background: #141414 !important;
+  color: #FFFFFF !important;
+  border: 1px solid rgba(182, 255, 0, 0.35) !important;
+  border-radius: 18px !important;
+  font-family: var(--font-body) !important;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.9), 0 0 35px rgba(182, 255, 0, 0.15) !important;
+}
+
+.swal2-title {
+  font-family: var(--font-title) !important;
+  font-weight: 800 !important;
+  color: #FFFFFF !important;
+  letter-spacing: 0.03em !important;
+}
+
+.swal2-html-container {
+  color: #D4D4D8 !important;
+}
+
+.swal2-confirm {
+  background: linear-gradient(135deg, #B6FF00 0%, #8FCC00 100%) !important;
+  color: #0B0B0B !important;
+  font-family: var(--font-title) !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  border-radius: 10px !important;
+  box-shadow: 0 0 20px rgba(182, 255, 0, 0.35) !important;
+}
+
+.swal2-cancel {
+  background: #252525 !important;
+  color: #FFFFFF !important;
+  font-family: var(--font-subtitle) !important;
+  font-weight: 600 !important;
+  border-radius: 10px !important;
+}
+
