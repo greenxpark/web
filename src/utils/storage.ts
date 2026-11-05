@@ -9,7 +9,31 @@ import type {
   SlotAvailability,
 } from '../types';
 import { apiGet, apiPost, isApiEnabled } from './api';
-import { formatTime12h, generateBookingCode, generateId, parseSheetDate } from './format';
+import {
+  formatTime12h,
+  generateBookingCode,
+  generateId,
+  parseSheetDate,
+  parseSheetTime,
+} from './format';
+
+const RESCHEDULE_OVERRIDES_KEY = 'greenxpark_reschedule_overrides_v1';
+
+interface RescheduleOverride {
+  date: string;
+  timeSlot: string;
+  updatedAt: string;
+}
+
+function getRescheduleOverrides(): Record<string, RescheduleOverride> {
+  return readLocal<Record<string, RescheduleOverride>>(RESCHEDULE_OVERRIDES_KEY) ?? {};
+}
+
+function saveRescheduleOverride(codeOrId: string, override: RescheduleOverride): void {
+  const current = getRescheduleOverrides();
+  current[codeOrId.toUpperCase()] = override;
+  writeLocal(RESCHEDULE_OVERRIDES_KEY, current);
+}
 
 function readLocal<T>(key: string): T | null {
   try {
@@ -172,15 +196,25 @@ export function normalizeBooking(raw: Record<string, unknown>): Booking {
   const serviceType =
     serviceRaw === 'practica_libre' || serviceRaw === 'evento_privado' ? serviceRaw : 'pitbike';
 
+  const id = String(raw.id ?? '');
+  const code = String(raw.code ?? 'GXP-0000').toUpperCase();
+  const overrides = getRescheduleOverrides();
+  const override = overrides[code] || (id ? overrides[id.toUpperCase()] : undefined);
+
+  const normalizedDate = override?.date ? parseSheetDate(override.date) : parseSheetDate(raw.date);
+  const normalizedTime = override?.timeSlot
+    ? parseSheetTime(override.timeSlot)
+    : parseSheetTime(raw.timeSlot);
+
   return {
-    id: String(raw.id ?? ''),
-    code: String(raw.code ?? 'GXP-0000'),
+    id,
+    code,
     serviceType,
     serviceLabel: String(raw.serviceLabel ?? ''),
     packageId: String(raw.packageId ?? ''),
     packageLabel: String(raw.packageLabel ?? ''),
-    date: parseSheetDate(raw.date),
-    timeSlot: String(raw.timeSlot ?? ''),
+    date: normalizedDate,
+    timeSlot: normalizedTime,
     quantity: Math.max(1, Number(raw.quantity ?? 1) || 1),
     unitPrice: Number(raw.unitPrice ?? 0) || 0,
     totalPrice: Number(raw.totalPrice ?? 0) || 0,
@@ -199,7 +233,7 @@ export function normalizeBooking(raw: Record<string, unknown>): Booking {
     status,
     adminNotes: raw.adminNotes ? String(raw.adminNotes) : '',
     createdAt: String(raw.createdAt ?? ''),
-    updatedAt: String(raw.updatedAt ?? ''),
+    updatedAt: String(override?.updatedAt ?? raw.updatedAt ?? ''),
   };
 }
 
@@ -410,9 +444,10 @@ export function computeDayAvailability(
   const totalCapacity = Math.max(1, config.schedule.pitBikeCapacityPerHour);
 
   const slots: SlotAvailability[] = baseHours.map((timeSlot) => {
-    const isSlotBlocked = !isOpen || blockedForDate.includes(timeSlot);
+    const cleanSlot = parseSheetTime(timeSlot);
+    const isSlotBlocked = !isOpen || blockedForDate.includes(cleanSlot);
     const bookedCount = activeDayBookings
-      .filter((b) => b.serviceType === 'pitbike' && b.timeSlot === timeSlot)
+      .filter((b) => b.serviceType === 'pitbike' && parseSheetTime(b.timeSlot) === cleanSlot)
       .reduce((acc, b) => acc + (Number(b.quantity) || 1), 0);
 
     const availableCount = isSlotBlocked ? 0 : Math.max(0, totalCapacity - bookedCount);
@@ -561,7 +596,12 @@ export async function updateBooking(
       id,
       data: updates,
     });
-    return normalizeBooking(res.booking);
+    const saved = normalizeBooking(res.booking);
+    const current = getCachedBookingsSync();
+    const next = current.map((b) => (b.id === id ? saved : b));
+    inMemoryBookings = next;
+    writeLocal(CONFIG.storageKeys.bookings, next);
+    return saved;
   }
 
   const bookings = await loadBookings();
@@ -575,6 +615,7 @@ export async function updateBooking(
     updatedAt: new Date().toISOString(),
   };
   bookings[idx] = merged;
+  inMemoryBookings = bookings;
   writeLocal(CONFIG.storageKeys.bookings, bookings);
   return merged;
 }
@@ -585,6 +626,179 @@ export async function deleteBooking(id: string): Promise<void> {
   }
   const bookings = await loadBookings();
   const filtered = bookings.filter((b) => b.id !== id);
+  inMemoryBookings = filtered;
   writeLocal(CONFIG.storageKeys.bookings, filtered);
+}
+
+/**
+ * Consulta pública de reserva por Código (ej. GXP-Q98W) y Documento (Cédula).
+ * Permite al cliente ver su estado y reprogramar fecha/hora, sin permitir cancelación.
+ */
+export async function lookupCustomerBooking(
+  code: string,
+  customerDocument: string
+): Promise<Booking | null> {
+  const cleanCode = code.trim().toUpperCase();
+  const cleanDoc = customerDocument.replace(/\D/g, '');
+  if (!cleanCode) return null;
+
+  if (isApiEnabled()) {
+    try {
+      const res = await apiGet<{
+        success?: boolean;
+        booking?: Record<string, unknown>;
+        error?: string;
+      }>({
+        action: 'lookupBooking',
+        code: cleanCode,
+        document: cleanDoc,
+      });
+      if (res.booking) {
+        return normalizeBooking(res.booking);
+      }
+      if (res.error && res.error === 'No encontramos ninguna reserva con ese código y documento.') {
+        return null;
+      }
+    } catch {
+      /* Fallback a búsqueda sobre publicBookings + caché local si el script aún no tiene lookupBooking */
+    }
+  }
+
+  const bookings = await loadBookings({ forceRefresh: true });
+  const match = bookings.find((b) => {
+    const sameCode = b.code.trim().toUpperCase() === cleanCode;
+    if (!sameCode) return false;
+    // Si la reserva viene de caché local y tiene customerDocument, validarlo también
+    if (b.customerDocument && cleanDoc) {
+      return b.customerDocument.replace(/\D/g, '') === cleanDoc;
+    }
+    return true;
+  });
+
+  return match ?? null;
+}
+
+/**
+ * Reprograma únicamente la fecha y/o la hora de una reserva existente (previa validación de cupos).
+ * La cancelación está restringida exclusivamente al administrador.
+ */
+export async function rescheduleCustomerBooking(params: {
+  id: string;
+  code: string;
+  customerDocument: string;
+  newDate: string;
+  newTimeSlot: string;
+}): Promise<Booking> {
+  const cleanCode = params.code.trim().toUpperCase();
+  const cleanDoc = params.customerDocument.trim();
+  const cleanDate = parseSheetDate(params.newDate);
+  const cleanTime = parseSheetTime(params.newTimeSlot);
+
+  const [config, allBookings] = await Promise.all([
+    loadParkConfig(),
+    loadBookings({ forceRefresh: true }),
+  ]);
+
+  const currentBooking =
+    allBookings.find(
+      (b) =>
+        (params.id && b.id === params.id) || b.code.trim().toUpperCase() === cleanCode
+    ) ?? (await lookupCustomerBooking(cleanCode, cleanDoc));
+
+  if (!currentBooking) {
+    throw new Error('No se encontró la reserva para reprogramar.');
+  }
+
+  if (currentBooking.status === 'cancelada') {
+    throw new Error(
+      'Esta reserva se encuentra cancelada. Comunícate con el administrador si necesitas asistencia.'
+    );
+  }
+
+  // Excluir la reserva actual al calcular disponibilidad de la nueva fecha/hora
+  const otherBookings = allBookings.filter(
+    (b) => b.id !== currentBooking.id && b.code.toUpperCase() !== cleanCode
+  );
+  const dayAvail = computeDayAvailability(cleanDate, config, otherBookings);
+
+  if (!dayAvail.isOpen) {
+    throw new Error(dayAvail.reasonClosed || 'La nueva fecha seleccionada no está disponible.');
+  }
+
+  if (currentBooking.serviceType === 'pitbike') {
+    const slot = dayAvail.slots.find((s) => parseSheetTime(s.timeSlot) === cleanTime);
+    if (!slot || !slot.isAvailable) {
+      throw new Error(`El horario ${formatTime12h(cleanTime)} no está disponible en esa fecha.`);
+    }
+    if (currentBooking.quantity > slot.availableCount) {
+      throw new Error(
+        `Tu reserva es de ${currentBooking.quantity} cupo(s), pero solo quedan ${slot.availableCount} disponible(s) a las ${slot.formattedTime}.`
+      );
+    }
+  } else if (currentBooking.serviceType === 'practica_libre') {
+    if (currentBooking.quantity > dayAvail.freePracticeAvailable) {
+      throw new Error(
+        `Solo quedan ${dayAvail.freePracticeAvailable} cupo(s) de Práctica Libre para esa fecha.`
+      );
+    }
+  }
+
+  const now = new Date().toISOString();
+
+  // Guardar override local inmediato para que la UI refleje el cambio en 0 ms
+  saveRescheduleOverride(cleanCode, {
+    date: cleanDate,
+    timeSlot: cleanTime,
+    updatedAt: now,
+  });
+  if (currentBooking.id) {
+    saveRescheduleOverride(currentBooking.id, {
+      date: cleanDate,
+      timeSlot: cleanTime,
+      updatedAt: now,
+    });
+  }
+
+  let updatedBooking: Booking = {
+    ...currentBooking,
+    date: cleanDate,
+    timeSlot: cleanTime,
+    updatedAt: now,
+  };
+
+  if (isApiEnabled()) {
+    try {
+      const res = await apiPost<{
+        success?: boolean;
+        booking?: Record<string, unknown>;
+        error?: string;
+      }>({
+        action: 'rescheduleBooking',
+        id: currentBooking.id,
+        code: cleanCode,
+        customerDocument: cleanDoc,
+        date: cleanDate,
+        timeSlot: cleanTime,
+      });
+      if (res.booking) {
+        updatedBooking = normalizeBooking(res.booking);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      // Si el error viene por validación de cupos o documento en el servidor, propagarlo
+      if (msg && !msg.includes('Accion no reconocida')) {
+        throw err;
+      }
+    }
+  }
+
+  const nextList = allBookings.map((b) =>
+    b.id === currentBooking.id || b.code.toUpperCase() === cleanCode ? updatedBooking : b
+  );
+  inMemoryBookings = nextList;
+  lastBookingsFetchTime = Date.now();
+  writeLocal(CONFIG.storageKeys.bookings, nextList);
+
+  return updatedBooking;
 }
 

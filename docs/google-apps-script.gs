@@ -56,6 +56,7 @@ function invalidateCache_() {
     var cache = getScriptCache_();
     cache.remove('gxp_cache_config_v1');
     cache.remove('gxp_cache_public_bookings_v1');
+    cache.remove('gxp_cache_public_bookings_v2');
   } catch (err) {
     Logger.log('Error invalidando cache: ' + err);
   }
@@ -85,7 +86,7 @@ function doGet(e) {
 
   if (action === 'publicBookings') {
     var cachePub = getScriptCache_();
-    var cachedPub = cachePub.get('gxp_cache_public_bookings_v1');
+    var cachedPub = cachePub.get('gxp_cache_public_bookings_v2');
     if (cachedPub) {
       return rawJsonResponse_(cachedPub);
     }
@@ -98,17 +99,67 @@ function doGet(e) {
         code: b.code,
         serviceType: b.serviceType,
         packageId: b.packageId,
+         packageLabel: b.packageLabel,
         date: parseSheetDate_(b.date),
-        timeSlot: b.timeSlot,
+        timeSlot: parseSheetTime_(b.timeSlot, ssPub),
         quantity: Number(b.quantity) || 1,
+        totalPrice: Number(b.totalPrice) || 0,
         status: b.status || 'pendiente',
       };
     });
     var pubStr = JSON.stringify({ bookings: sanitized });
     try {
-      cachePub.put('gxp_cache_public_bookings_v1', pubStr, 300);
+      cachePub.put('gxp_cache_public_bookings_v2', pubStr, 300);
     } catch (err) {}
     return rawJsonResponse_(pubStr);
+  }
+
+  if (action === 'lookupBooking') {
+    var lookupCode = String(e.parameter.code || '').trim().toUpperCase();
+    var lookupDoc = String(e.parameter.document || '').replace(/\D/g, '');
+    if (!lookupCode || !lookupDoc) {
+      return jsonResponse_({
+        success: false,
+        error: 'Ingresa tu código de reserva y número de documento.',
+      });
+    }
+    var ssLookup = getSpreadsheet_();
+    var allForLookup = getBookings_(ssLookup);
+    var found = null;
+    for (var i = 0; i < allForLookup.length; i++) {
+      var item = allForLookup[i];
+      var itemCode = String(item.code || '').trim().toUpperCase();
+      var itemDoc = String(item.customerDocument || '').replace(/\D/g, '');
+      if (itemCode === lookupCode && itemDoc === lookupDoc) {
+        found = {
+          id: item.id,
+          code: item.code,
+          serviceType: item.serviceType,
+          serviceLabel: item.serviceLabel,
+          packageId: item.packageId,
+          packageLabel: item.packageLabel,
+          date: parseSheetDate_(item.date),
+          timeSlot: parseSheetTime_(item.timeSlot, ssLookup),
+          quantity: Number(item.quantity) || 1,
+          unitPrice: Number(item.unitPrice) || 0,
+          totalPrice: Number(item.totalPrice) || 0,
+          customerName: item.customerName,
+          customerDocument: item.customerDocument,
+          customerPhone: item.customerPhone,
+          status: item.status || 'pendiente',
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+        };
+        break;
+      }
+    }
+    if (!found) {
+      return jsonResponse_({
+        success: false,
+        error: 'No encontramos ninguna reserva con ese código y documento.',
+      });
+    }
+    return jsonResponse_({ success: true, booking: found });
   }
 
   // Acciones Protegidas (GET) - Requieren contraseña
@@ -166,6 +217,11 @@ function doPost(e) {
       invalidateCache_();
       return jsonResponse_(resCreate);
 
+    case 'rescheduleBooking':
+      var resReschedule = rescheduleBooking_(ss, body);
+      invalidateCache_();
+      return jsonResponse_(resReschedule);
+
     case 'updateBooking':
       var resUpdate = updateBooking_(ss, body.id, body.data);
       invalidateCache_();
@@ -202,10 +258,11 @@ function createBooking_(ss, data) {
 
     if (config && config.schedule) {
       var capPerHour = Number(config.schedule.pitBikeCapacityPerHour) || 5;
+      var targetTime = parseSheetTime_(data.timeSlot, ss);
       if (data.serviceType === 'pitbike') {
         var usedInSlot = activeSameDay
           .filter(function (b) {
-            return b.serviceType === 'pitbike' && String(b.timeSlot) === String(data.timeSlot);
+            return b.serviceType === 'pitbike' && parseSheetTime_(b.timeSlot, ss) === targetTime;
           })
           .reduce(function (sum, b) {
             return sum + (Number(b.quantity) || 1);
@@ -232,6 +289,7 @@ function createBooking_(ss, data) {
       row[h] = data[h] !== undefined && data[h] !== null ? data[h] : '';
     });
     row.date = cleanDate;
+    row.timeSlot = parseSheetTime_(data.timeSlot, ss);
     row.comprobanteUrl = comprobanteUrl;
     row.status = row.status || 'pendiente';
     row.createdAt = row.createdAt || now;
@@ -243,6 +301,99 @@ function createBooking_(ss, data) {
     return {
       success: true,
       booking: row,
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Permite al cliente reprogramar únicamente la fecha y/o la hora de su reserva
+ * verificando código + documento y cupos disponibles. La cancelación es exclusiva del administrador.
+ */
+function rescheduleBooking_(ss, body) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+
+  try {
+    var sheet = getBookingsSheet_(ss);
+    var rows = sheetToObjects_(sheet);
+    var targetCode = String(body.code || '').trim().toUpperCase();
+    var targetDoc = String(body.customerDocument || '').replace(/\D/g, '');
+    var newDate = parseSheetDate_(body.date);
+    var newTime = parseSheetTime_(body.timeSlot, ss);
+
+    var idx = rows.findIndex(function (r) {
+      var sameCode = String(r.code || '').trim().toUpperCase() === targetCode;
+      var sameDoc = String(r.customerDocument || '').replace(/\D/g, '') === targetDoc;
+      return sameCode && (!targetDoc || sameDoc);
+    });
+
+    if (idx === -1) {
+      return {
+        success: false,
+        error: 'No se encontró una reserva que coincida con ese código y documento.',
+      };
+    }
+
+    var current = rows[idx];
+    if (String(current.status).toLowerCase() === 'cancelada') {
+      return {
+        success: false,
+        error: 'Esta reserva se encuentra cancelada. Solo el administrador puede gestionarla.',
+      };
+    }
+
+    var config = getParkConfig_(ss);
+    var allBookings = getBookings_(ss);
+    var activeOthersSameDay = allBookings.filter(function (b) {
+      return (
+        String(b.id) !== String(current.id) &&
+        String(b.code).toUpperCase() !== targetCode &&
+        parseSheetDate_(b.date) === newDate &&
+        String(b.status).toLowerCase() !== 'cancelada'
+      );
+    });
+
+    if (config && config.schedule && String(current.serviceType) === 'pitbike') {
+      var capPerHour = Number(config.schedule.pitBikeCapacityPerHour) || 5;
+      var usedInSlot = activeOthersSameDay
+        .filter(function (b) {
+          return b.serviceType === 'pitbike' && parseSheetTime_(b.timeSlot, ss) === newTime;
+        })
+        .reduce(function (sum, b) {
+          return sum + (Number(b.quantity) || 1);
+        }, 0);
+
+      var reqQty = Math.max(1, Number(current.quantity) || 1);
+      if (usedInSlot + reqQty > capPerHour) {
+        return {
+          success: false,
+          error:
+            'Solo quedan ' +
+            Math.max(0, capPerHour - usedInSlot) +
+            ' cupo(s) disponibles en el nuevo horario seleccionado.',
+        };
+      }
+    }
+
+    current.date = newDate;
+    current.timeSlot = newTime;
+    current.updatedAt = new Date().toISOString();
+
+    var rowNum = idx + 2;
+    BOOKING_HEADERS.forEach(function (h, colIdx) {
+      var val = current[h] !== undefined ? current[h] : '';
+      if (h === 'timeSlot') {
+        sheet.getRange(rowNum, colIdx + 1).setNumberFormat('@').setValue(String(val));
+      } else {
+        sheet.getRange(rowNum, colIdx + 1).setValue(val);
+      }
+    });
+
+    return {
+      success: true,
+      booking: current,
     };
   } finally {
     lock.releaseLock();
@@ -293,6 +444,7 @@ function getBookings_(ss) {
   if (!sheet || sheet.getLastRow() < 2) return [];
   return sheetToObjects_(sheet).map(function (b) {
     b.date = parseSheetDate_(b.date);
+    b.timeSlot = parseSheetTime_(b.timeSlot, ss);
     b.quantity = Number(b.quantity) || 1;
     b.unitPrice = Number(b.unitPrice) || 0;
     b.totalPrice = Number(b.totalPrice) || 0;
@@ -448,6 +600,27 @@ function parseSheetDate_(value) {
   }
   var str = String(value).trim();
   if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
+  return str;
+}
+
+function parseSheetTime_(value, ss) {
+  if (!value) return '';
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    var tz = ss ? ss.getSpreadsheetTimeZone() : 'America/Bogota';
+    return Utilities.formatDate(value, tz, 'HH:mm');
+  }
+  var str = String(value).trim();
+  if (/^\d{1,2}:\d{2}$/.test(str)) {
+    var parts = str.split(':');
+    return ('0' + Number(parts[0])).slice(-2) + ':' + parts[1];
+  }
+  if (/^\d{4}-\d{2}-\d{2}T/.test(str)) {
+    var d = new Date(str);
+    if (!isNaN(d.getTime())) {
+      var tzIso = ss ? ss.getSpreadsheetTimeZone() : 'America/Bogota';
+      return Utilities.formatDate(d, tzIso, 'HH:mm');
+    }
+  }
   return str;
 }
 

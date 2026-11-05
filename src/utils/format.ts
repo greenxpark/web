@@ -3,11 +3,48 @@ export function formatCOP(value: number): string {
   return '$' + num.toLocaleString('es-CO', { maximumFractionDigits: 0 });
 }
 
+export function parseSheetTime(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '';
+  const str = String(value).trim();
+  if (str === 'DIA_COMPLETO') return 'DIA_COMPLETO';
+
+  // Formato directo HH:mm o H:mm
+  const direct = str.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (direct) {
+    return `${direct[1].padStart(2, '0')}:${direct[2]}`;
+  }
+
+  // Cuando Google Sheets serializa una hora como Date en 1899-12-30T...Z
+  if (str.includes('T') || str.includes('1899') || str.includes('GMT')) {
+    const dt = new Date(str);
+    if (!Number.isNaN(dt.getTime())) {
+      try {
+        const formatted = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'America/Bogota',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).format(dt);
+        if (/^\d{2}:\d{2}$/.test(formatted)) {
+          return formatted;
+        }
+      } catch {
+        const h = String(dt.getHours()).padStart(2, '0');
+        const m = String(dt.getMinutes()).padStart(2, '0');
+        return `${h}:${m}`;
+      }
+    }
+  }
+
+  return str;
+}
+
 export function formatTime12h(time24: string): string {
   if (!time24) return '';
-  if (time24 === 'DIA_COMPLETO') return 'Jornada Completa';
-  const match = time24.trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return time24;
+  const normalized = parseSheetTime(time24);
+  if (normalized === 'DIA_COMPLETO') return 'Jornada Completa';
+  const match = normalized.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return normalized;
   const h = parseInt(match[1], 10);
   const m = match[2];
   const suffix = h >= 12 ? 'p. m.' : 'a. m.';

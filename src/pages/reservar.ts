@@ -11,6 +11,7 @@ import {
   getNextOpenDateISO,
   getTodayISO,
   parseSheetDate,
+  parseSheetTime,
   readFileAsDataUrl,
 } from '../utils/format';
 import {
@@ -20,6 +21,8 @@ import {
   getCachedParkConfigSync,
   loadBookings,
   loadParkConfig,
+  lookupCustomerBooking,
+  rescheduleCustomerBooking,
 } from '../utils/storage';
 
 interface BookingState {
@@ -85,11 +88,11 @@ export function initReservarPage(): void {
   const renderAll = () => {
     const dayAvail = computeDayAvailability(state.date, config, bookings);
     ensureValidTimeSlotAndQuantity(state, dayAvail);
-    renderReservarView(app, config, state, dayAvail, renderAll, (nextBookings) => {
-    bookings = nextBookings;
-    renderAll();
-  });
-}
+    renderReservarView(app, config, state, dayAvail, bookings, renderAll, (nextBookings) => {
+      bookings = nextBookings;
+      renderAll();
+    });
+  };
 
   renderAll();
 
@@ -102,6 +105,7 @@ export function initReservarPage(): void {
         },
       }),
       loadBookings({
+        forceRefresh: true,
         onUpdate: (b) => {
           bookings = b;
           renderAll();
@@ -226,6 +230,7 @@ function renderReservarView(
   config: ParkConfig,
   state: BookingState,
   dayAvail: DayAvailabilitySummary,
+  allBookings: Booking[],
   triggerInstantRerender: () => void,
   onBookingsRefreshed: (bks: Booking[]) => void
 ): void {
@@ -263,9 +268,18 @@ function renderReservarView(
                 Selecciona tu servicio, elige el día y la hora exacta en tiempo real, transfiere por Nequi o DaviPlata y sube tu comprobante para bloquear tu cupo de inmediato.
               </p>
             </div>
-            <div class="rounded-xl border border-lime-electric/40 bg-lime-electric/10 px-4 py-3 text-xs sm:text-sm max-w-sm">
-              <p class="font-subtitle font-semibold text-lime-electric uppercase">⚡ Inducción 10 min incluida</p>
-              <p class="text-white/85 mt-0.5">Recuerda llegar <strong>30 minutos antes</strong> de la hora seleccionada.</p>
+            <div class="flex flex-col sm:items-end gap-2.5">
+              <button
+                type="button"
+                id="open-lookup-modal-btn"
+                class="btn-x-outline text-xs py-2.5 px-4"
+              >
+                🔍 CONSULTAR O CAMBIAR FECHA/HORA DE MI RESERVA
+              </button>
+              <div class="rounded-xl border border-lime-electric/40 bg-lime-electric/10 px-4 py-2.5 text-xs sm:text-sm max-w-sm">
+                <p class="font-subtitle font-semibold text-lime-electric uppercase">⚡ Inducción 10 min incluida</p>
+                <p class="text-white/85 mt-0.5">Recuerda llegar <strong>30 minutos antes</strong> de la hora seleccionada.</p>
+              </div>
             </div>
           </div>
 
@@ -1027,6 +1041,86 @@ function renderReservarView(
         </div>
       </dialog>
 
+      <!-- MODAL NATIVO <dialog> DE CONSULTA Y REPROGRAMACIÓN DE FECHA/HORA (SIN CANCELACIÓN) -->
+      <dialog
+        id="lookup-modal"
+        closedby="any"
+        aria-labelledby="lookup-modal-title"
+        class="w-full max-w-xl rounded-2xl border border-lime-electric/40 bg-carbon-card p-0 text-white shadow-2xl"
+      >
+        <div class="border-b border-white/10 bg-graphite/80 px-6 py-4 flex items-center justify-between gap-4">
+          <div class="flex items-center gap-2.5">
+            <span class="slash-stripes"><span></span><span></span><span></span></span>
+            <h2 id="lookup-modal-title" class="font-title text-lg sm:text-xl font-extrabold uppercase text-white">
+              CONSULTAR O REPROGRAMAR MI RESERVA
+            </h2>
+          </div>
+          <form method="dialog">
+            <button
+              type="submit"
+              value="cancel"
+              class="rounded-lg border border-white/15 bg-carbon/70 p-2 text-white/70 hover:text-white hover:border-lime-electric"
+              aria-label="Cerrar ventana de consulta"
+            >
+              ✕
+            </button>
+          </form>
+        </div>
+
+        <div class="max-h-[75vh] overflow-y-auto px-6 py-5 space-y-5 text-sm">
+          <p class="text-xs text-white/75">
+            Ingresa el <strong>Código de Reserva</strong> (ej. <code class="text-lime-electric">GXP-XXXX</code>) y tu <strong>Cédula / Documento</strong> para consultar el estado de tu cupo o modificar la fecha y hora de tu turno.
+          </p>
+
+          <form id="lookup-booking-form" class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+            <div class="sm:col-span-5">
+              <label for="lookup-code-input" class="x-label">Código de Reserva *</label>
+              <input
+                type="text"
+                id="lookup-code-input"
+                name="lookupCode"
+                autocorrect="off"
+                autocapitalize="characters"
+                spellcheck="false"
+                required
+                placeholder="Ej. GXP-Q98W"
+                class="x-input uppercase font-title tracking-wider"
+              />
+            </div>
+            <div class="sm:col-span-5">
+              <label for="lookup-doc-input" class="x-label">Cédula / Documento *</label>
+              <input
+                type="text"
+                id="lookup-doc-input"
+                name="lookupDocument"
+                inputmode="numeric"
+                autocorrect="off"
+                spellcheck="false"
+                required
+                placeholder="Ej. 1020304050"
+                class="x-input"
+              />
+            </div>
+            <div class="sm:col-span-2">
+              <button
+                type="submit"
+                id="lookup-submit-btn"
+                class="btn-x-primary w-full justify-center py-3 text-xs"
+              >
+                Buscar
+              </button>
+            </div>
+          </form>
+
+          <div id="lookup-result-container" class="space-y-4"></div>
+
+          <div class="rounded-xl border border-white/10 bg-carbon/80 p-3.5 text-xs text-white/70">
+            <strong class="text-lime-electric uppercase font-subtitle block mb-0.5">Política de Modificación:</strong>
+            Desde este módulo puedes consultar tu estado y <strong>reprogramar la fecha o la hora</strong> según disponibilidad en tiempo real. Las cancelaciones solo pueden ser gestionadas por el administrador del parque.
+          </div>
+        </div>
+      </dialog>
+
       ${renderFooter(config, true)}
     </div>
   `;
@@ -1037,6 +1131,7 @@ function renderReservarView(
     config,
     state,
     dayAvail,
+    allBookings,
     pricing,
     triggerInstantRerender,
     onBookingsRefreshed
@@ -1048,6 +1143,7 @@ function bindReservarInteractions(
   config: ParkConfig,
   state: BookingState,
   dayAvail: DayAvailabilitySummary,
+  allBookings: Booking[],
   pricing: ReturnType<typeof calculateCurrentPricing>,
   triggerRerender: () => void,
   onBookingsRefreshed: (bks: Booking[]) => void
@@ -1243,6 +1339,325 @@ function bindReservarInteractions(
       state.acceptedTerms = true;
       if (termsCheckbox) termsCheckbox.checked = true;
       legalDialog.close('accepted');
+    });
+  }
+
+  // 8B. Modal <dialog> de Consulta y Reprogramación de Reserva (Fecha/Hora)
+  const lookupDialog = document.getElementById('lookup-modal') as HTMLDialogElement | null;
+  const openLookupBtn = document.getElementById('open-lookup-modal-btn');
+  const lookupForm = document.getElementById('lookup-booking-form') as HTMLFormElement | null;
+  const lookupResultContainer = document.getElementById('lookup-result-container');
+
+  if (lookupDialog && openLookupBtn) {
+    openLookupBtn.addEventListener('click', () => {
+      lookupDialog.showModal();
+    });
+
+    if (!('closedBy' in HTMLDialogElement.prototype)) {
+      const isOutside = (e: PointerEvent, dialog: HTMLDialogElement) => {
+        const r = dialog.getBoundingClientRect();
+        return (
+          e.clientX < r.left ||
+          e.clientX > r.right ||
+          e.clientY < r.top ||
+          e.clientY > r.bottom
+        );
+      };
+      let pressedOutside = false;
+      lookupDialog.addEventListener('pointerdown', (e) => {
+        pressedOutside = isOutside(e, lookupDialog);
+      });
+      lookupDialog.addEventListener('pointerup', (e) => {
+        if (pressedOutside && isOutside(e, lookupDialog)) {
+          lookupDialog.close();
+        }
+      });
+    }
+  }
+
+  const renderFoundBookingEditor = (found: Booking, enteredDoc: string) => {
+    if (!lookupResultContainer) return;
+
+    let selectedNewDate = parseSheetDate(found.date) || getTodayISO();
+    let selectedNewTime = parseSheetTime(found.timeSlot);
+
+    const drawEditor = () => {
+      const otherBookings = allBookings.filter(
+        (b) => b.id !== found.id && b.code.toUpperCase() !== found.code.toUpperCase()
+      );
+      const availForDate = computeDayAvailability(selectedNewDate, config, otherBookings);
+      const validSlots = availForDate.slots.filter((s) =>
+        found.serviceType === 'pitbike'
+          ? s.isAvailable && s.availableCount >= found.quantity
+          : !s.isBlocked && availForDate.freePracticeAvailable >= found.quantity
+      );
+
+      if (
+        found.serviceType !== 'evento_privado' &&
+        !validSlots.some((s) => parseSheetTime(s.timeSlot) === selectedNewTime)
+      ) {
+        selectedNewTime = validSlots[0]?.timeSlot ?? '';
+      }
+
+      const statusBadge =
+        found.status === 'confirmada'
+          ? `<span class="rounded-full bg-lime-electric/20 border border-lime-electric px-2.5 py-0.5 font-subtitle text-[11px] font-bold uppercase text-lime-electric">✓ CONFIRMADA</span>`
+          : found.status === 'cancelada'
+          ? `<span class="rounded-full bg-red-500/20 border border-red-500 px-2.5 py-0.5 font-subtitle text-[11px] font-bold uppercase text-red-400">✕ CANCELADA</span>`
+          : `<span class="rounded-full bg-amber-500/20 border border-amber-400 px-2.5 py-0.5 font-subtitle text-[11px] font-bold uppercase text-amber-300">⏳ PENDIENTE DE VERIFICACIÓN</span>`;
+
+      lookupResultContainer.innerHTML = `
+        <div class="rounded-2xl border-2 border-lime-electric/50 bg-carbon/95 p-4 sm:p-5 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+            <div>
+              <span class="block font-subtitle text-[10px] uppercase text-white/60">Código de Reserva</span>
+              <span class="font-title text-xl font-extrabold text-lime-electric">${escapeHtml(found.code)}</span>
+            </div>
+            ${statusBadge}
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs text-white/85">
+            <div>
+              <span class="text-white/55 block">Servicio / Paquete:</span>
+              <strong class="text-white">${escapeHtml(found.packageLabel || found.serviceLabel || found.serviceType)}</strong>
+            </div>
+            <div>
+              <span class="text-white/55 block">Cupos / Motos apartadas:</span>
+              <strong class="text-lime-neon">${found.quantity} cupo(s)</strong>
+            </div>
+            <div>
+              <span class="text-white/55 block">Fecha actual:</span>
+              <strong class="text-white">${escapeHtml(found.date)} (${escapeHtml(formatDateLong(found.date))})</strong>
+            </div>
+            <div>
+              <span class="text-white/55 block">Hora actual:</span>
+              <strong class="text-lime-electric">${escapeHtml(formatTime12h(found.timeSlot))}</strong>
+            </div>
+          </div>
+
+          ${
+            found.status === 'cancelada'
+              ? `
+            <div class="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-200">
+              Esta reserva fue cancelada por administración y no puede reprogramarse en línea.
+            </div>
+          `
+              : `
+            <div class="border-t border-white/10 pt-4 space-y-3">
+              <h3 class="font-title text-sm font-extrabold uppercase text-lime-electric">
+                📅 Cambiar Fecha u Hora de mi Reserva
+              </h3>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label for="reschedule-date-input" class="x-label">Nueva Fecha *</label>
+                  <input
+                    type="date"
+                    id="reschedule-date-input"
+                    min="${getTodayISO()}"
+                    value="${escapeHtml(selectedNewDate)}"
+                    class="x-input font-subtitle text-xs"
+                  />
+                </div>
+
+                ${
+                  found.serviceType === 'evento_privado'
+                    ? `
+                  <div>
+                    <label class="x-label">Jornada</label>
+                    <div class="x-input text-xs text-lime-electric font-semibold flex items-center">
+                      Día Completo (${availForDate.isOpen ? 'Disponible' : 'No disponible'})
+                    </div>
+                  </div>
+                `
+                    : `
+                  <div>
+                    <label for="reschedule-time-select" class="x-label">Nueva Hora Disponible *</label>
+                    <select id="reschedule-time-select" class="x-input font-subtitle text-xs" ${!availForDate.isOpen || validSlots.length === 0 ? 'disabled' : ''}>
+                      ${
+                        !availForDate.isOpen
+                          ? `<option value="">Fecha cerrada (${escapeHtml(availForDate.reasonClosed || 'No disponible')})</option>`
+                          : validSlots.length === 0
+                          ? `<option value="">Sin horarios con ${found.quantity} cupo(s) libres</option>`
+                          : validSlots
+                              .map(
+                                (s) => `
+                            <option value="${s.timeSlot}" ${parseSheetTime(s.timeSlot) === selectedNewTime ? 'selected' : ''}>
+                              ${s.formattedTime} (${
+                                  found.serviceType === 'pitbike'
+                                    ? `${s.availableCount} cupos libres`
+                                    : 'Disponible'
+                                })
+                            </option>
+                          `
+                              )
+                              .join('')
+                      }
+                    </select>
+                  </div>
+                `
+                }
+              </div>
+
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                <span class="text-[11px] text-white/60">
+                  * Solo puedes modificar fecha y hora. Para cualquier otra solicitud contacta al administrador.
+                </span>
+                <button
+                  type="button"
+                  id="save-reschedule-btn"
+                  ${!availForDate.isOpen || (found.serviceType !== 'evento_privado' && !selectedNewTime) ? 'disabled' : ''}
+                  class="btn-x-primary text-xs py-2.5 px-5 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  GUARDAR NUEVA FECHA Y HORA
+                </button>
+              </div>
+            </div>
+          `
+          }
+        </div>
+      `;
+
+      const newDateInput = document.getElementById('reschedule-date-input') as HTMLInputElement | null;
+      const newTimeSelect = document.getElementById('reschedule-time-select') as HTMLSelectElement | null;
+      const saveRescheduleBtn = document.getElementById('save-reschedule-btn') as HTMLButtonElement | null;
+
+      if (newDateInput) {
+        newDateInput.addEventListener('change', () => {
+          if (newDateInput.value) {
+            selectedNewDate = parseSheetDate(newDateInput.value);
+            drawEditor();
+          }
+        });
+      }
+
+      if (newTimeSelect) {
+        newTimeSelect.addEventListener('change', () => {
+          selectedNewTime = parseSheetTime(newTimeSelect.value);
+        });
+      }
+
+      if (saveRescheduleBtn) {
+        saveRescheduleBtn.addEventListener('click', async () => {
+          const targetTime = found.serviceType === 'evento_privado' ? 'DIA_COMPLETO' : selectedNewTime;
+          if (!selectedNewDate || !targetTime) return;
+
+          if (
+            selectedNewDate === parseSheetDate(found.date) &&
+            targetTime === parseSheetTime(found.timeSlot)
+          ) {
+            await Swal.fire({
+              icon: 'info',
+              title: 'Sin cambios',
+              text: 'La fecha y hora seleccionadas ya son las actuales de tu reserva.',
+            });
+            return;
+          }
+
+          try {
+            saveRescheduleBtn.disabled = true;
+            saveRescheduleBtn.textContent = 'ACTUALIZANDO HORARIO...';
+
+            const updated = await rescheduleCustomerBooking({
+              id: found.id,
+              code: found.code,
+              customerDocument: enteredDoc,
+              newDate: selectedNewDate,
+              newTimeSlot: targetTime,
+            });
+
+            if (lookupDialog) lookupDialog.close();
+
+            await Swal.fire({
+              icon: 'success',
+              title: '¡RESERVA REPROGRAMADA!',
+              html: `
+                <div class="text-left space-y-2 text-sm">
+                  <p>Tu reserva <strong class="text-[#B6FF00]">${escapeHtml(updated.code)}</strong> ha sido actualizada exitosamente:</p>
+                  <p>• <strong>Nueva Fecha:</strong> ${escapeHtml(updated.date)} (${escapeHtml(formatDateLong(updated.date))})</p>
+                  <p>• <strong>Nueva Hora:</strong> ${escapeHtml(formatTime12h(updated.timeSlot))}</p>
+                  <p class="text-xs text-white/70 pt-1">Recuerda presentarte 30 minutos antes de tu nuevo turno.</p>
+                </div>
+              `,
+              confirmButtonText: 'PERFECTO',
+            });
+
+            const refreshed = getCachedBookingsSync();
+            onBookingsRefreshed(refreshed);
+          } catch (err) {
+            saveRescheduleBtn.disabled = false;
+            saveRescheduleBtn.textContent = 'GUARDAR NUEVA FECHA Y HORA';
+            await Swal.fire({
+              icon: 'error',
+              title: 'No se pudo reprogramar',
+              text: err instanceof Error ? err.message : 'Intenta nuevamente.',
+            });
+          }
+        });
+      }
+    };
+
+    drawEditor();
+  };
+
+  if (lookupForm && lookupResultContainer) {
+    lookupForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const codeInput = document.getElementById('lookup-code-input') as HTMLInputElement | null;
+      const docInput = document.getElementById('lookup-doc-input') as HTMLInputElement | null;
+      const submitBtn = document.getElementById('lookup-submit-btn') as HTMLButtonElement | null;
+
+      const code = codeInput?.value.trim().toUpperCase() ?? '';
+      const doc = docInput?.value.trim() ?? '';
+
+      if (!code || !doc) {
+        lookupResultContainer.innerHTML = `
+          <div class="rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-200">
+            Por favor ingresa tanto tu <strong>Código de Reserva</strong> como tu <strong>Cédula / Documento</strong>.
+          </div>
+        `;
+        return;
+      }
+
+      try {
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = '...';
+        }
+        lookupResultContainer.innerHTML = `
+          <div class="rounded-xl border border-white/10 bg-carbon/60 p-4 text-center text-xs text-white/70">
+            Buscando reserva <strong>${escapeHtml(code)}</strong>...
+          </div>
+        `;
+
+        const found = await lookupCustomerBooking(code, doc);
+
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Buscar';
+        }
+
+        if (!found) {
+          lookupResultContainer.innerHTML = `
+            <div class="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-xs text-red-200">
+              No encontramos ninguna reserva con el código <strong>${escapeHtml(code)}</strong> y el documento ingresado. Verifica los datos e intenta nuevamente.
+            </div>
+          `;
+          return;
+        }
+
+        renderFoundBookingEditor(found, doc);
+      } catch (err) {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Buscar';
+        }
+        lookupResultContainer.innerHTML = `
+          <div class="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-xs text-red-200">
+            ${escapeHtml(err instanceof Error ? err.message : 'Error al consultar la reserva.')}
+          </div>
+        `;
+      }
     });
   }
 
